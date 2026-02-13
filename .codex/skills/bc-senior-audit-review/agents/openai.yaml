@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-senior-audit-review"
+  short_description: "Bot Cripto skill: bc-senior-audit-review"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

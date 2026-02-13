@@ -1,0 +1,34 @@
+﻿apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bot-cripto-sa
+  namespace: ml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bot-cripto-role
+  namespace: ml
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bot-cripto-rb
+  namespace: ml
+subjects:
+  - kind: ServiceAccount
+    name: bot-cripto-sa
+    namespace: ml
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: bot-cripto-role

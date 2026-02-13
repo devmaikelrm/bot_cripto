@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-feature-engineering"
+  short_description: "Bot Cripto skill: bc-feature-engineering"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

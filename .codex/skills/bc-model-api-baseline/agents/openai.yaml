@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-model-api-baseline"
+  short_description: "Bot Cripto skill: bc-model-api-baseline"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

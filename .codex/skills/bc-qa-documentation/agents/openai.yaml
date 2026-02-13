@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-qa-documentation"
+  short_description: "Bot Cripto skill: bc-qa-documentation"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-telegram-notifications"
+  short_description: "Bot Cripto skill: bc-telegram-notifications"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

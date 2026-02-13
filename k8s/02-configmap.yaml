@@ -1,0 +1,21 @@
+﻿apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bot-cripto-config
+  namespace: ml
+data:
+  EXCHANGE: "binance"
+  SYMBOLS: "BTC/USDT"
+  TIMEFRAME: "5m"
+  PRED_HORIZON_STEPS: "5"
+  ENCODER_LENGTH: "60"
+  DATA_DIR_RAW: "/mnt/data/raw"
+  DATA_DIR_PROCESSED: "/mnt/data/processed"
+  MODELS_DIR: "/mnt/models"
+  LOGS_DIR: "/mnt/logs"
+  PAPER_MODE: "true"
+  LIVE_MODE: "false"
+  RISK_MAX: "0.30"
+  PROB_MIN: "0.60"
+  MIN_EXPECTED_RETURN: "0.002"
+  FEES_BPS: "10"

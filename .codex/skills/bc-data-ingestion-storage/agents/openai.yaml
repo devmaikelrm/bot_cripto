@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-data-ingestion-storage"
+  short_description: "Bot Cripto skill: bc-data-ingestion-storage"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

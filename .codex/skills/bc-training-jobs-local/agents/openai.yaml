@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-training-jobs-local"
+  short_description: "Bot Cripto skill: bc-training-jobs-local"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

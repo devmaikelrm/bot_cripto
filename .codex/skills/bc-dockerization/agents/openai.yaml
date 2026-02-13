@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-dockerization"
+  short_description: "Bot Cripto skill: bc-dockerization"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

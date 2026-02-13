@@ -1,0 +1,24 @@
+﻿[Unit]
+Description=Bot Cripto inference run (oneshot)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/bot-cripto
+EnvironmentFile=/etc/bot-cripto/bot-cripto.env
+ExecStart=/opt/bot-cripto/.venv/bin/bot-cripto run-inference
+User=botcripto
+Group=botcripto
+UMask=0027
+Nice=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/bot-cripto/data /opt/bot-cripto/models /var/log/bot-cripto
+StandardOutput=append:/var/log/bot-cripto/inference.log
+StandardError=append:/var/log/bot-cripto/inference.err.log
+
+[Install]
+WantedBy=multi-user.target

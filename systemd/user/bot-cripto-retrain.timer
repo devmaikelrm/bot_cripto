@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Bot Cripto daily retrain
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+AccuracySec=1m
+Unit=bot-cripto-retrain.service
+
+[Install]
+WantedBy=timers.target
+

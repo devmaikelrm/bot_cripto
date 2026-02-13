@@ -1,0 +1,57 @@
+"""Tests para configuración centralizada."""
+
+from __future__ import annotations
+
+from bot_cripto.core.config import Settings
+
+
+class TestSettings:
+    """Tests para Settings."""
+
+    def test_defaults(self) -> None:
+        """Verifica que los defaults cargan correctamente."""
+        settings = Settings()
+        assert settings.exchange == "binance"
+        assert settings.symbols == "BTC/USDT"
+        assert settings.timeframe == "5m"
+        assert settings.pred_horizon_steps == 5
+        assert settings.encoder_length == 60
+        assert settings.paper_mode is True
+        assert settings.live_mode is False
+
+    def test_symbols_list(self) -> None:
+        """Verifica parsing de symbols comma-separated."""
+        settings = Settings(symbols="BTC/USDT, ETH/USDT, SOL/USDT")
+        assert settings.symbols_list == ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+    def test_fees_decimal_conversion(self) -> None:
+        """Verifica conversión de bps a decimal."""
+        settings = Settings(fees_bps=10)
+        assert settings.fees_decimal == 0.001
+
+    def test_fees_zero(self) -> None:
+        """Fees cero no rompe nada."""
+        settings = Settings(fees_bps=0)
+        assert settings.fees_decimal == 0.0
+
+    def test_risk_bounds(self) -> None:
+        """Risk max se mantiene en rango."""
+        settings = Settings(risk_max=0.5)
+        assert 0.0 <= settings.risk_max <= 1.0
+
+    def test_ensure_dirs(self, tmp_path: object) -> None:
+        """ensure_dirs crea los directorios necesarios."""
+        from pathlib import Path
+
+        base = Path(str(tmp_path))
+        settings = Settings(
+            data_dir_raw=base / "raw",
+            data_dir_processed=base / "processed",
+            models_dir=base / "models",
+            logs_dir=base / "logs",
+        )
+        settings.ensure_dirs()
+        assert settings.data_dir_raw.exists()
+        assert settings.data_dir_processed.exists()
+        assert settings.models_dir.exists()
+        assert settings.logs_dir.exists()

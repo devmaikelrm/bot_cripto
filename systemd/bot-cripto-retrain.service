@@ -1,0 +1,24 @@
+﻿[Unit]
+Description=Bot Cripto retraining pipeline (oneshot)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/bot-cripto
+EnvironmentFile=/etc/bot-cripto/bot-cripto.env
+ExecStart=/bin/bash -lc '/opt/bot-cripto/.venv/bin/bot-cripto fetch --days 30 && /opt/bot-cripto/.venv/bin/bot-cripto features && /opt/bot-cripto/.venv/bin/bot-cripto train-trend && /opt/bot-cripto/.venv/bin/bot-cripto train-return && /opt/bot-cripto/.venv/bin/bot-cripto train-risk'
+User=botcripto
+Group=botcripto
+UMask=0027
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/bot-cripto/data /opt/bot-cripto/models /var/log/bot-cripto
+StandardOutput=append:/var/log/bot-cripto/retrain.log
+StandardError=append:/var/log/bot-cripto/retrain.err.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,201 @@
+PROMPT PARA CODEX (PROYECTO COMPLETO, EXHAUSTIVO, MODULAR, k3s + TFT + TELEGRAM)
+
+Rol:
+Sos “Codex” actuando como un equipo completo de ingeniería (ML Engineer, Data Engineer, DevOps, Security, QA). Tenés que CREAR TODO el repositorio de código y configuración para un sistema de predicción de mercado cripto con arquitectura limpia y modular, listo para correr local y en cluster k3s multi-nodo. Debe integrar Telegram para notificaciones. El proyecto debe ser exhaustivo: código + tests + Docker + Kubernetes YAML + documentación + scripts de automatización.
+
+Objetivo del sistema:
+
+* Mercado inicial: BTC/USDT
+* Timeframe: 5m
+* Horizonte: 5 velas adelante (25 minutos)
+* Salida del modelo (modo profesional):
+
+  1. prob_up (probabilidad de subida)
+  2. expected_return (retorno esperado)
+  3. range (p10, p50, p90 o lower/median/upper)
+  4. risk_score (probabilidad de evento adverso / drawdown en el horizonte)
+* Arquitectura preparada para empezar con baseline (scikit-learn) y luego reemplazar por TFT (pytorch-forecasting) sin reescribir el pipeline (solo cambiando el módulo de modelo). El sistema debe soportar “modelo por modelo”: trend/return/risk (jobs separados).
+
+Restricciones y buenas prácticas:
+
+* Separar capas: data → features → models → decision → execution → notifications.
+* No mezclar lógica de descarga, features, entrenamiento y ejecución en un solo archivo.
+* Configuración por variables de entorno y archivos YAML/JSON, sin hardcode.
+* Secrets (tokens, keys API) solo por Kubernetes Secrets o .env (no en el repo).
+* Logging estructurado (JSON) + métricas.
+* Soporte de “paper mode” (sin operar) obligatorio. Live trading opcional y apagado por defecto.
+* Todos los pasos deben ser reproducibles en Docker.
+* El proyecto debe ser seguro: RBAC y namespace aislado para k3s.
+
+Entregables obligatorios:
+
+1. Estructura de repo completa (carpetas y archivos).
+2. requirements.txt / pyproject.toml (preferible poetry o uv si lo considerás, pero debe ser fácil).
+3. Dockerfiles:
+
+   * docker/Dockerfile.train
+   * docker/Dockerfile.infer
+4. Kubernetes YAML para k3s:
+
+   * namespace, RBAC (ServiceAccount + Role + RoleBinding) limitado a namespace ml
+   * PVCs (ml-data-pvc, ml-models-pvc, ml-logs-pvc) con storageClass configurable
+   * ConfigMap general
+   * Secret Telegram
+   * Jobs: fetch, features, train_trend, train_return, train_risk
+   * CronJobs: retrain pipeline (diario o semanal) y inference (cada 5m o 1m configurable)
+   * (Opcional) Deployment de inferencia si se elige servicio continuo
+   * NodeSelector/affinity para enviar entrenamiento a nodos role=ml
+   * resource requests/limits (CPU/RAM) razonables
+5. Código Python exhaustivo:
+
+   * data ingestion con CCXT (fetch_ohlcv) + validación + guardado raw (CSV o parquet; preferible parquet)
+   * feature engineering (RSI, MACD, ATR, returns, volatility rolling, volumen features)
+   * dataset builder para modelos: genera time_idx, group_ids, encoder_length, prediction_length
+   * modelos:
+
+     * interface BaseModel (train/predict/save/load)
+     * BaselineModel (scikit-learn): clasificación prob_up + regresión expected_return + cuantiles (si aplica con modelos separados)
+     * TFTModel (pytorch-forecasting): entrenamiento con quantile loss para rango (p10/p50/p90) y outputs adecuados
+   * entrenamiento “modelo por modelo”:
+
+     * scripts separados train_trend.py, train_return.py, train_risk.py
+     * guarda checkpoints/artefactos versionados (timestamp + git commit hash)
+     * genera métricas y reportes en logs
+   * inferencia:
+
+     * carga modelos más recientes
+     * calcula features en vivo
+     * produce señal estandarizada JSON
+   * decision engine:
+
+     * reglas claras usando prob_up, expected_return, risk_score, y umbrales configurables
+     * produce “trade intent” (LONG/SHORT/NO_TRADE) y “confidence”
+   * execution:
+
+     * paper executor (simula operaciones, track PnL, fees)
+     * live executor (opcional, deshabilitado por defecto y con flags + confirmación)
+   * Telegram:
+
+     * módulo notifications/telegram.py con funciones tg_send(), tg_send_markdown(), rate limit simple
+     * mensajes para: job start/end, errores, métricas, señales, estado
+   * herramientas:
+
+     * CLI con argparse o Typer: comandos fetch/features/train/predict/run-inference
+6. Tests (pytest):
+
+   * tests de validación de datos
+   * tests de feature engineering
+   * tests del interface del modelo (contract tests)
+   * tests de decision engine
+7. Documentación:
+
+   * README.md completo con:
+
+     * overview
+     * quickstart local
+     * quickstart docker
+     * despliegue k3s paso a paso
+     * cómo configurar Telegram
+     * cómo agregar más pares/timeframes
+     * cómo cambiar de baseline a TFT
+     * troubleshooting
+   * docs/ARCHITECTURE.md: diagramas ASCII + explicación
+   * docs/SECURITY.md: RBAC, secrets, networking, recomendaciones
+8. Scripts:
+
+   * scripts/bootstrap_local.sh (setup venv, deps)
+   * scripts/build_and_push.sh (build/push al registry)
+   * scripts/k8s_apply_all.sh (aplica YAMLs en orden)
+   * scripts/run_pipeline_local.sh (ejecuta fetch→features→train→infer)
+
+Configuración esperada (env):
+
+* SYMBOLS="BTC/USDT"
+* TIMEFRAME="5m"
+* PRED_HORIZON_STEPS=5
+* ENCODER_LENGTH=60
+* DATA_DIR_RAW=/mnt/data/raw
+* DATA_DIR_PROCESSED=/mnt/data/processed
+* MODELS_DIR=/mnt/models
+* LOGS_DIR=/mnt/logs
+* TELEGRAM_BOT_TOKEN=...
+* TELEGRAM_CHAT_ID=...
+* EXCHANGE=binance
+* PAPER_MODE=true
+* LIVE_MODE=false
+* RISK_MAX=0.30
+* PROB_MIN=0.60
+* MIN_EXPECTED_RETURN=0.002
+* FEES_BPS=10
+
+Diseño de la salida estándar (signal.json):
+{
+"ts": "...",
+"symbol": "BTC/USDT",
+"timeframe": "5m",
+"horizon_steps": 5,
+"prob_up": 0.67,
+"expected_return": 0.008,
+"p10": -0.004,
+"p50": 0.006,
+"p90": 0.013,
+"risk_score": 0.22,
+"decision": "LONG|SHORT|NO_TRADE",
+"confidence": 0.73,
+"reason": "texto corto",
+"version": {
+"git_commit": "...",
+"model_version": "..."
+}
+}
+
+IMPORTANTE: Skill Creator (modo multi-skill)
+Quiero que organices el trabajo usando “Skill Creator” y generes skills profesionales y separadas por responsabilidades. Cada skill debe producir artefactos (archivos/código) y luego ser consumida por la siguiente. Necesito mínimo estas skills:
+
+* Skill 01: Repo Scaffolding & Standards
+  Crea estructura del repo, linters (ruff/black), typing (mypy), pre-commit opcional, README inicial.
+* Skill 02: Data Ingestion (CCXT) + Storage
+  Implementa fetch, validación, guardado raw.
+* Skill 03: Feature Engineering
+  Implementa indicadores y build_features con tests.
+* Skill 04: Model API + BaselineModel
+  Implementa BaseModel + baseline con contract tests.
+* Skill 05: TFTModel (PyTorch Forecasting)
+  Implementa TFT con quantile loss, dataset builder, guardado, evaluación.
+* Skill 06: Training Jobs (Local)
+  Implementa scripts train_* + métricas + versionado.
+* Skill 07: Inference + Decision Engine + Paper Executor
+  Implementa infer, decision, paper trading, reportes.
+* Skill 08: Telegram Notifications
+  Implementa notificaciones y wiring en pipeline.
+* Skill 09: Dockerization
+  Dockerfiles, compose opcional, ejecución reproducible.
+* Skill 10: k3s/Kubernetes Manifests
+  Namespace, RBAC, PVC, ConfigMap/Secrets, Jobs/CronJobs, nodeSelector, recursos.
+* Skill 11: QA & Documentation
+  README final, docs, scripts, troubleshooting, checklists.
+* Skill 12 (SENIOR REVIEW): Auditoría Senior
+  Una skill senior que revise TODO el proyecto:
+
+  * estructura
+  * seguridad
+  * edge cases
+  * performance
+  * consistencia de configs
+  * calidad de tests
+  * mejoras recomendadas
+    Debe generar un informe CRÍTICO con:
+  * issues (alta/media/baja)
+  * acciones concretas
+  * priorización
+  * “diff suggestions” para mejorar (sin romper).
+
+Salida final esperada:
+
+* Entregar el repositorio completo con todos los archivos.
+* Listar comandos para correr local y en k3s.
+* Incluir ejemplos de mensajes Telegram.
+* Incluir advertencias de seguridad (API keys, permisos, RBAC, no exponer servicios).
+* No dejar TODO en pseudo-código: debe ser código ejecutable.
+
+Comenzá ya: crea el repo entero y todos los archivos.

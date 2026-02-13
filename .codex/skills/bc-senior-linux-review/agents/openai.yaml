@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-senior-linux-review"
+  short_description: "Bot Cripto skill: bc-senior-linux-review"
+  default_prompt: "Use  for this Bot Cripto task."

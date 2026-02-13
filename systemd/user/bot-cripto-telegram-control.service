@@ -1,0 +1,25 @@
+[Unit]
+Description=Bot Cripto Telegram control bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/bot-cripto
+EnvironmentFile=%h/bot-cripto/.env
+ExecStart=%h/bot-cripto/.venv/bin/bot-cripto telegram-control
+Restart=always
+RestartSec=3
+UMask=0027
+Nice=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=%h/bot-cripto/logs
+StandardOutput=append:%h/bot-cripto/logs/telegram_control.log
+StandardError=append:%h/bot-cripto/logs/telegram_control.err.log
+
+[Install]
+WantedBy=default.target
+

@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-functional-roadmap"
+  short_description: "Bot Cripto skill: bc-functional-roadmap"
+  default_prompt: "Use bc-functional-roadmap to prioritize the next functional implementations."

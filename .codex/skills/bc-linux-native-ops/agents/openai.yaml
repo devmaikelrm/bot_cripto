@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-linux-native-ops"
+  short_description: "Bot Cripto skill: bc-linux-native-ops"
+  default_prompt: "Use  for this Bot Cripto task."

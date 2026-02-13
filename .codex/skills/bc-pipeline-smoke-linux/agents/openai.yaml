@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-pipeline-smoke-linux"
+  short_description: "Bot Cripto skill: bc-pipeline-smoke-linux"
+  default_prompt: "Use  for this Bot Cripto task."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-inference-decision-paper"
+  short_description: "Bot Cripto skill: bc-inference-decision-paper"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

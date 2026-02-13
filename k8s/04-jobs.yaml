@@ -1,0 +1,179 @@
+﻿apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fetch-job
+  namespace: ml
+spec:
+  template:
+    spec:
+      serviceAccountName: bot-cripto-sa
+      restartPolicy: Never
+      nodeSelector:
+        role: ml
+      containers:
+        - name: fetch
+          image: your-registry/bot-cripto-train:latest
+          command: ["bot-cripto", "fetch", "--days", "30"]
+          envFrom:
+            - configMapRef:
+                name: bot-cripto-config
+            - secretRef:
+                name: telegram-secret
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1000m", memory: "2Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /mnt/data }
+            - { name: models, mountPath: /mnt/models }
+            - { name: logs, mountPath: /mnt/logs }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ml-data-pvc }
+        - name: models
+          persistentVolumeClaim: { claimName: ml-models-pvc }
+        - name: logs
+          persistentVolumeClaim: { claimName: ml-logs-pvc }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: features-job
+  namespace: ml
+spec:
+  template:
+    spec:
+      serviceAccountName: bot-cripto-sa
+      restartPolicy: Never
+      nodeSelector:
+        role: ml
+      containers:
+        - name: features
+          image: your-registry/bot-cripto-train:latest
+          command: ["bot-cripto", "features"]
+          envFrom:
+            - configMapRef:
+                name: bot-cripto-config
+            - secretRef:
+                name: telegram-secret
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "1000m", memory: "2Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /mnt/data }
+            - { name: models, mountPath: /mnt/models }
+            - { name: logs, mountPath: /mnt/logs }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ml-data-pvc }
+        - name: models
+          persistentVolumeClaim: { claimName: ml-models-pvc }
+        - name: logs
+          persistentVolumeClaim: { claimName: ml-logs-pvc }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-trend-job
+  namespace: ml
+spec:
+  template:
+    spec:
+      serviceAccountName: bot-cripto-sa
+      restartPolicy: Never
+      nodeSelector:
+        role: ml
+      containers:
+        - name: train-trend
+          image: your-registry/bot-cripto-train:latest
+          command: ["bot-cripto", "train-trend"]
+          envFrom:
+            - configMapRef:
+                name: bot-cripto-config
+            - secretRef:
+                name: telegram-secret
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "2000m", memory: "4Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /mnt/data }
+            - { name: models, mountPath: /mnt/models }
+            - { name: logs, mountPath: /mnt/logs }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ml-data-pvc }
+        - name: models
+          persistentVolumeClaim: { claimName: ml-models-pvc }
+        - name: logs
+          persistentVolumeClaim: { claimName: ml-logs-pvc }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-return-job
+  namespace: ml
+spec:
+  template:
+    spec:
+      serviceAccountName: bot-cripto-sa
+      restartPolicy: Never
+      nodeSelector:
+        role: ml
+      containers:
+        - name: train-return
+          image: your-registry/bot-cripto-train:latest
+          command: ["bot-cripto", "train-return"]
+          envFrom:
+            - configMapRef:
+                name: bot-cripto-config
+            - secretRef:
+                name: telegram-secret
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "2000m", memory: "4Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /mnt/data }
+            - { name: models, mountPath: /mnt/models }
+            - { name: logs, mountPath: /mnt/logs }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ml-data-pvc }
+        - name: models
+          persistentVolumeClaim: { claimName: ml-models-pvc }
+        - name: logs
+          persistentVolumeClaim: { claimName: ml-logs-pvc }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: train-risk-job
+  namespace: ml
+spec:
+  template:
+    spec:
+      serviceAccountName: bot-cripto-sa
+      restartPolicy: Never
+      nodeSelector:
+        role: ml
+      containers:
+        - name: train-risk
+          image: your-registry/bot-cripto-train:latest
+          command: ["bot-cripto", "train-risk"]
+          envFrom:
+            - configMapRef:
+                name: bot-cripto-config
+            - secretRef:
+                name: telegram-secret
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { cpu: "2000m", memory: "4Gi" }
+          volumeMounts:
+            - { name: data, mountPath: /mnt/data }
+            - { name: models, mountPath: /mnt/models }
+            - { name: logs, mountPath: /mnt/logs }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: ml-data-pvc }
+        - name: models
+          persistentVolumeClaim: { claimName: ml-models-pvc }
+        - name: logs
+          persistentVolumeClaim: { claimName: ml-logs-pvc }

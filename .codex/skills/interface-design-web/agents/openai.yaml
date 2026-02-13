@@ -1,0 +1,4 @@
+interface:
+  display_name: "Interface Design Web"
+  short_description: "Disena interfaces web modernas, claras y accesibles."
+  default_prompt: "Use $interface-design-web to design or refactor a production web interface with accessibility and responsive quality."

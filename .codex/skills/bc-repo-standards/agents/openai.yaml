@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-repo-standards"
+  short_description: "Bot Cripto skill: bc-repo-standards"
+  default_prompt: "Use  to execute this Bot Cripto workflow."

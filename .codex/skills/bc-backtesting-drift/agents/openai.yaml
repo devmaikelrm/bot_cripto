@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-backtesting-drift"
+  short_description: "Bot Cripto skill: bc-backtesting-drift"
+  default_prompt: "Use  for this Bot Cripto task."

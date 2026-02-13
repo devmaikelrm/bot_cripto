@@ -1,0 +1,79 @@
+﻿apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retrain-pipeline
+  namespace: ml
+spec:
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: bot-cripto-sa
+          restartPolicy: Never
+          nodeSelector:
+            role: ml
+          containers:
+            - name: retrain
+              image: your-registry/bot-cripto-train:latest
+              command: ["/bin/sh", "-c", "bot-cripto fetch --days 30 && bot-cripto features && bot-cripto train-trend && bot-cripto train-return && bot-cripto train-risk"]
+              envFrom:
+                - configMapRef:
+                    name: bot-cripto-config
+                - secretRef:
+                    name: telegram-secret
+              resources:
+                requests: { cpu: "500m", memory: "1Gi" }
+                limits: { cpu: "2000m", memory: "4Gi" }
+              volumeMounts:
+                - { name: data, mountPath: /mnt/data }
+                - { name: models, mountPath: /mnt/models }
+                - { name: logs, mountPath: /mnt/logs }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: ml-data-pvc }
+            - name: models
+              persistentVolumeClaim: { claimName: ml-models-pvc }
+            - name: logs
+              persistentVolumeClaim: { claimName: ml-logs-pvc }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: inference-every-5m
+  namespace: ml
+spec:
+  schedule: "*/5 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: bot-cripto-sa
+          restartPolicy: Never
+          containers:
+            - name: inference
+              image: your-registry/bot-cripto-infer:latest
+              command: ["bot-cripto", "run-inference"]
+              envFrom:
+                - configMapRef:
+                    name: bot-cripto-config
+                - secretRef:
+                    name: telegram-secret
+              resources:
+                requests: { cpu: "250m", memory: "512Mi" }
+                limits: { cpu: "1000m", memory: "2Gi" }
+              volumeMounts:
+                - { name: data, mountPath: /mnt/data }
+                - { name: models, mountPath: /mnt/models }
+                - { name: logs, mountPath: /mnt/logs }
+          volumes:
+            - name: data
+              persistentVolumeClaim: { claimName: ml-data-pvc }
+            - name: models
+              persistentVolumeClaim: { claimName: ml-models-pvc }
+            - name: logs
+              persistentVolumeClaim: { claimName: ml-logs-pvc }

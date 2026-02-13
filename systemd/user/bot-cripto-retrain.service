@@ -1,0 +1,23 @@
+[Unit]
+Description=Bot Cripto daily retrain (fetch+features+train)
+Wants=network-online.target
+After=network-online.target bot-cripto-inference.service
+Conflicts=bot-cripto-inference.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/bot-cripto
+EnvironmentFile=%h/bot-cripto/.env
+ExecStart=%h/bot-cripto/scripts/retrain_daily.sh
+UMask=0027
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=%h/bot-cripto/data %h/bot-cripto/models %h/bot-cripto/logs
+StandardOutput=append:%h/bot-cripto/logs/retrain.log
+StandardError=append:%h/bot-cripto/logs/retrain.err.log
+
+[Install]
+WantedBy=default.target

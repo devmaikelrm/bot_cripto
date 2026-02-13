@@ -1,0 +1,4 @@
+interface:
+  display_name: "bc-ensemble-regime-risk"
+  short_description: "Bot Cripto skill: bc-ensemble-regime-risk"
+  default_prompt: "Use  for this Bot Cripto task."
