@@ -49,6 +49,10 @@ lightning_logs/
 *.tar.gz
 *.zip
 
+# Local-only helper scripts (never commit secrets)
+connect_vps.local.ps1
+connect_vps.local.sh
+
 # ──────────────────────────────────────────────
 # Coverage & Testing
 # ──────────────────────────────────────────────
