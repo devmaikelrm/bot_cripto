@@ -103,7 +103,9 @@ def main() -> int:
         _safe_print("    python scripts\\vps_check.py --fix")
         return 2
 
-    password = getpass.getpass(f"Password for {args.user}@{args.host}: ")
+    password = os.environ.get("VPS_PASS", "").strip()
+    if not password:
+        password = getpass.getpass(f"Password for {args.user}@{args.host}: ")
 
     _section(f"Connecting: {args.user}@{args.host}")
     with Remote(args.host, args.user, password) as r:
@@ -211,4 +213,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
