@@ -207,3 +207,21 @@ Disparar inferencia manual:
 sudo systemctl start bot-cripto-inference.service
 ```
 
+## 11. Deploy recomendado (release + swap via git)
+
+Si operas en `systemd --user` (como en tu VPS), el deploy mas robusto es: clonar nuevo release y hacer swap, manteniendo `data/models/logs` fuera del codigo.
+
+Desde tu PC (Windows/PowerShell):
+
+```powershell
+$env:VPS_HOST="100.64.x.x"
+$env:VPS_USER="maikelrm95"
+# Opcionales:
+# $env:VPS_REMOTE_DIR="/home/maikelrm95/bot-cripto"
+# $env:VPS_STATE_DIR="/home/maikelrm95/bot-cripto-state"
+# $env:VPS_GIT_REPO="https://git.kl3d.uy/maikelrm95/Crypto.git"
+# $env:VPS_GIT_BRANCH="main"
+python scripts/deploy_auto.py --git-swap
+```
+
+Este modo detiene timers/servicios, hace backup del release anterior, mantiene estado persistente y reinicia todo.
