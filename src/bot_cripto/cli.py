@@ -79,6 +79,27 @@ def fetch(
         typer.echo("No data downloaded")
         raise typer.Exit(code=1)
 
+    # Capture OBI, Whale Pressure and Sentiment for the current moment
+    if days <= 1:
+        # 1. Order Book Imbalance
+        obi = fetcher.fetch_order_book_imbalance(target_symbol)
+        df["obi"] = 0.0
+        df.iloc[-1, df.columns.get_loc("obi")] = obi
+        
+        # 2. Whale Pressure
+        whale_p = fetcher.fetch_whale_pressure(target_symbol)
+        df["whale_pressure"] = 0.0
+        df.iloc[-1, df.columns.get_loc("whale_pressure")] = whale_p
+        
+        # 3. Sentiment (Optional)
+        from bot_cripto.data.sentiment import SentimentFetcher
+        sent_fetcher = SentimentFetcher(effective_settings)
+        sentiment_score = sent_fetcher.fetch_sentiment(target_symbol.split("/")[0])
+        df["sentiment"] = 0.0
+        df.iloc[-1, df.columns.get_loc("sentiment")] = sentiment_score
+        
+        typer.echo(f"Captured Micro: OBI={obi:.4f}, Whale={whale_p:.2f}, Sent={sentiment_score:.2f}")
+
     path = fetcher.save_data(df, target_symbol, target_timeframe)
     typer.echo(f"Saved raw data: {path}")
     typer.echo(f"Rows: {len(df)}")
@@ -124,6 +145,76 @@ def fetch_batch(
                 continue
             path = fetcher.save_data(df, sym, tf)
             typer.echo(f"Saved raw data: {path} rows={len(df)}")
+
+
+@app.command("validate-data")
+def validate_data(
+    symbol: str | None = typer.Option(None, help="Pair like BTC/USDT"),
+    timeframe: str | None = typer.Option(None, help="Timeframe like 1h, 5m"),
+    days: int = typer.Option(7, help="Days of history to compare"),
+    providers: str = typer.Option(
+        "binance,coinbase,kraken",
+        help="Comma-separated exchanges to cross-check",
+    ),
+    mad_threshold: float = typer.Option(3.5, help="MAD z-score threshold for outlier detection"),
+) -> None:
+    """Cross-exchange OHLCV validation with outlier detection."""
+    from bot_cripto.data.aggregator import RobustDataAggregator
+
+    settings = get_settings()
+    target_symbol = symbol or settings.symbols_list[0]
+    target_tf = timeframe or settings.timeframe
+    prov_list = _split_csv(providers) or ["binance", "coinbase", "kraken"]
+
+    typer.echo(f"Validating {target_symbol} {target_tf} across {prov_list} ({days}d) ...")
+
+    agg = RobustDataAggregator(
+        providers=prov_list,
+        mad_threshold=mad_threshold,
+    )
+    report = agg.fetch_and_validate(target_symbol, target_tf, days=days)
+
+    typer.echo(f"\nProviders OK: {report.providers_ok}/{report.providers_requested}")
+    if report.providers_failed:
+        typer.echo(f"Failed: {report.providers_failed}")
+
+    typer.echo(f"Total bars: {report.total_bars}")
+    typer.echo(f"Outlier bars: {report.outlier_bars} ({report.outlier_ratio:.2%})")
+    typer.echo(f"Consensus rows: {len(report.consensus_df)}")
+
+    if report.outliers:
+        typer.echo(f"\nTop outliers (max 20):")
+        for o in report.outliers[:20]:
+            typer.echo(
+                f"  {o.timestamp} | {o.column:5s} | {o.provider:10s} | "
+                f"value={o.value:.2f} median={o.median:.2f} z={o.z_score:.1f}"
+            )
+
+    for prov, info in report.per_source.items():
+        status = "OK" if info["ok"] else f"FAIL: {info['error']}"
+        typer.echo(f"  {prov:12s}: {info['rows']:>6} rows  [{status}]")
+
+    if report.outlier_ratio > 0.05:
+        typer.echo("\nWARNING: >5% outlier bars detected — data quality suspect")
+    elif report.providers_ok >= 2:
+        typer.echo("\nData quality: GOOD (cross-exchange consensus)")
+    else:
+        typer.echo("\nData quality: UNCHECKED (single source only)")
+
+
+@app.command("fetch-macro")
+def fetch_macro(
+    days: int = typer.Option(60, help="Days to download"),
+    tickers: str = typer.Option("SPY,DX-Y.NYB", help="Comma-separated tickers"),
+) -> None:
+    """Download macro data (SPY, DXY) for correlation analysis."""
+    from bot_cripto.data.macro import MacroFetcher
+
+    settings = get_settings()
+    fetcher = MacroFetcher(settings)
+    ticker_list = _split_csv(tickers)
+    fetcher.fetch_macro_data(tickers=ticker_list, days=days)
+    typer.echo("Macro data download complete")
 
 
 @app.command()
@@ -191,6 +282,10 @@ def train(
         from bot_cripto.models.tft import TFTPredictor
 
         model = TFTPredictor()
+    elif model_type == "nbeats":
+        from bot_cripto.models.nbeats import NBeatsPredictor
+
+        model = NBeatsPredictor()
     else:
         typer.echo(f"Unsupported model type: {model_type}")
         raise typer.Exit(code=1)
@@ -233,6 +328,10 @@ def predict(
         from bot_cripto.models.tft import TFTPredictor
 
         model = TFTPredictor()
+    elif model_type == "nbeats":
+        from bot_cripto.models.nbeats import NBeatsPredictor
+
+        model = NBeatsPredictor()
     else:
         typer.echo(f"Unsupported model type: {model_type}")
         raise typer.Exit(code=1)
@@ -277,6 +376,17 @@ def train_risk(
     typer.echo(run(symbol=symbol, timeframe=timeframe))
 
 
+@app.command("train-nbeats")
+def train_nbeats(
+    symbol: str | None = typer.Option(None, help="Pair"),
+    timeframe: str | None = typer.Option(None, help="Timeframe like 5m, 15m, 1h (overrides TIMEFRAME)"),
+) -> None:
+    """Train N-BEATS time-series model."""
+    from bot_cripto.jobs.train_nbeats import run
+
+    typer.echo(run(symbol=symbol, timeframe=timeframe))
+
+
 @app.command("run-inference")
 def run_inference(
     symbol: str | None = typer.Option(None, help="Pair"),
@@ -290,8 +400,12 @@ def run_inference(
 @app.command("backtest")
 def backtest(
     symbol: str | None = typer.Option(None, help="Pair"),
-    folds: int = typer.Option(4, help="Walk-forward folds"),
+    folds: int = typer.Option(4, help="Walk-forward folds (ignored when --train-size set)"),
     timeframe: str | None = typer.Option(None, help="Timeframe like 5m, 15m, 1h (overrides TIMEFRAME)"),
+    train_size: int | None = typer.Option(None, help="Training window in candles (e.g. 25920 for 90d@5m)"),
+    test_size: int | None = typer.Option(None, help="Test window in candles (e.g. 8640 for 30d@5m)"),
+    step_size: int | None = typer.Option(None, help="Step between folds in candles (e.g. 4320 for 15d@5m)"),
+    anchored: bool = typer.Option(True, help="Anchored (expanding) window vs rolling"),
 ) -> None:
     from bot_cripto.backtesting.walk_forward import WalkForwardBacktester
     from bot_cripto.models.baseline import BaselineModel
@@ -313,8 +427,148 @@ def backtest(
         fees_bps=settings.fees_bps,
         spread_bps=settings.spread_bps,
         slippage_bps=settings.slippage_bps,
+        train_size=train_size,
+        test_size=test_size,
+        step_size=step_size,
+        anchored=anchored,
     ).run(df, model_factory=BaselineModel)
-    typer.echo(json.dumps(report.__dict__, indent=2))
+
+    # Build serializable output (fold_results contains dataclasses)
+    out = {k: v for k, v in report.__dict__.items() if k != "fold_results"}
+    out["fold_results"] = [f.__dict__ for f in report.fold_results]
+    typer.echo(json.dumps(out, indent=2, default=str))
+
+
+@app.command("realistic-backtest")
+def realistic_backtest(
+    symbol: str | None = typer.Option(None, help="Pair"),
+    timeframe: str | None = typer.Option(None, help="Timeframe"),
+    maker_fee: float = typer.Option(2.0, help="Maker fee in bps"),
+    taker_fee: float = typer.Option(4.0, help="Taker fee in bps"),
+    base_slippage: float = typer.Option(1.0, help="Base slippage in bps"),
+    volume_impact: float = typer.Option(0.1, help="Volume impact factor for dynamic slippage"),
+    latency: int = typer.Option(1, help="Execution latency in bars"),
+    max_fill: float = typer.Option(0.10, help="Max fill ratio of bar volume (0.0-1.0)"),
+    equity: float = typer.Option(10_000.0, help="Initial equity"),
+    position_frac: float = typer.Option(0.02, help="Position size as fraction of equity"),
+) -> None:
+    """Run realistic backtest with dynamic costs, partial fills, and latency."""
+    from bot_cripto.backtesting.realistic import CostModel, RealisticBacktester
+    from bot_cripto.models.baseline import BaselineModel
+    from bot_cripto.models.base import PredictionOutput
+
+    settings = get_settings()
+    target_symbol = symbol or settings.symbols_list[0]
+    target_timeframe = timeframe or settings.timeframe
+    safe_symbol = target_symbol.replace("/", "_")
+    input_path = (
+        settings.data_dir_processed / f"{safe_symbol}_{target_timeframe}_features.parquet"
+    )
+    if not input_path.exists():
+        typer.echo(f"Feature dataset not found: {input_path}")
+        raise typer.Exit(code=1)
+
+    df = pd.read_parquet(input_path)
+
+    # Train baseline model and generate signals
+    model = BaselineModel()
+    train_size = int(len(df) * 0.7)
+    train_df = df.iloc[:train_size]
+    model.train(train_df, target_col="close")
+
+    signals = []
+    for i in range(train_size, len(df)):
+        window = df.iloc[:i]
+        pred: PredictionOutput = model.predict(window)
+        if pred.expected_return > 0 and pred.prob_up >= 0.55:
+            signals.append(1)
+        elif pred.expected_return < 0 and pred.prob_up < 0.45:
+            signals.append(-1)
+        else:
+            signals.append(0)
+
+    test_df = df.iloc[train_size:].copy()
+    test_df["signal"] = signals
+
+    cost_model = CostModel(
+        maker_fee_bps=maker_fee,
+        taker_fee_bps=taker_fee,
+        base_slippage_bps=base_slippage,
+        volume_impact_factor=volume_impact,
+        latency_bars=latency,
+        max_fill_ratio=max_fill,
+    )
+
+    report = RealisticBacktester(
+        cost_model=cost_model,
+        initial_equity=equity,
+        position_size_frac=position_frac,
+    ).run(test_df)
+
+    out = {k: v for k, v in report.__dict__.items() if k != "trades"}
+    out["sample_trades"] = [t.__dict__ for t in report.trades[:10]]
+    typer.echo(json.dumps(out, indent=2, default=str))
+
+
+@app.command("check-retrain")
+def check_retrain(
+    symbol: str | None = typer.Option(None, help="Pair"),
+    timeframe: str | None = typer.Option(None, help="Timeframe"),
+    interval_hours: float = typer.Option(24.0, help="Max hours between retrains"),
+    perf_threshold: float = typer.Option(0.2, help="Performance relative drop threshold"),
+    drift_ratio: float = typer.Option(0.3, help="Feature drift ratio threshold"),
+    train_frac: float = typer.Option(0.7, help="Fraction of data used as training reference"),
+) -> None:
+    """Evaluate retrain triggers (time, performance, data drift) and recommend action."""
+    from bot_cripto.adaptive.online_learner import OnlineLearningSystem
+    from bot_cripto.monitoring.performance_store import PerformanceStore
+
+    settings = get_settings()
+    target_symbol = symbol or settings.symbols_list[0]
+    target_timeframe = timeframe or settings.timeframe
+    safe_symbol = target_symbol.replace("/", "_")
+
+    # Load performance history
+    perf_path = settings.logs_dir / "performance_history.json"
+    perf_history: list[float] | None = None
+    if perf_path.exists():
+        store = PerformanceStore(perf_path)
+        perf_history = store.metrics() or None
+
+    # Load feature data for drift comparison
+    feat_path = settings.data_dir_processed / f"{safe_symbol}_{target_timeframe}_features.parquet"
+    ref_df = None
+    cur_df = None
+    if feat_path.exists():
+        full_df = pd.read_parquet(feat_path)
+        split = int(len(full_df) * train_frac)
+        ref_df = full_df.iloc[:split]
+        cur_df = full_df.iloc[split:]
+
+    system = OnlineLearningSystem(
+        settings=settings,
+        retrain_interval_hours=interval_hours,
+        perf_drop_threshold=perf_threshold,
+        feature_drift_ratio=drift_ratio,
+    )
+
+    rec = system.evaluate(
+        performance_history=perf_history,
+        reference_features=ref_df,
+        current_features=cur_df,
+    )
+
+    out = {
+        "should_retrain": rec.should_retrain,
+        "urgency": rec.urgency,
+        "triggers_fired": rec.triggers_fired,
+        "triggers_total": rec.triggers_total,
+        "triggers": [
+            {"name": r.name, "fired": r.fired, "reason": r.reason, "details": r.details}
+            for r in rec.results
+        ],
+    }
+    typer.echo(json.dumps(out, indent=2, default=str))
 
 
 @app.command("detect-drift")

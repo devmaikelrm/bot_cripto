@@ -1,33 +1,34 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from bot_cripto.core.config import get_settings
 from bot_cripto.core.logging import get_logger
 from bot_cripto.jobs.common import build_version_dir, load_feature_dataset, write_model_metadata
-from bot_cripto.models.tft import TFTPredictor
+from bot_cripto.models.nbeats import NBeatsPredictor
 from bot_cripto.monitoring.watchtower_store import WatchtowerStore
 
-logger = get_logger("jobs.train_trend")
+logger = get_logger("jobs.train_nbeats")
 
 
 def run(symbol: str | None = None, timeframe: str | None = None) -> str:
     settings = get_settings()
     target = symbol or settings.symbols_list[0]
     tf = timeframe or settings.timeframe
+
     df = load_feature_dataset(settings, target, timeframe=tf)
 
-    model = TFTPredictor()  # Use Advanced TFT Model
+    model = NBeatsPredictor()
     metadata = model.train(df, target_col="close")
-    out_dir = build_version_dir(settings, "trend", target, metadata, timeframe=tf)
+    out_dir = build_version_dir(settings, "nbeats", target, metadata, timeframe=tf)
     model.save(out_dir)
     write_model_metadata(out_dir, metadata)
     WatchtowerStore(settings.watchtower_db_path).log_training_metrics(
         ts=metadata.trained_at,
-        model_name=f"trend:{target}:{tf}",
+        model_name=f"nbeats:{target}:{tf}",
         metrics=metadata.metrics,
     )
 
     logger.info(
-        "train_trend_done",
+        "train_nbeats_done",
         symbol=target,
         timeframe=tf,
         output=str(out_dir),

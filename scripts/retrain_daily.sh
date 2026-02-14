@@ -26,6 +26,9 @@ IFS=',' read -r -a timeframes <<< "$timeframes_csv"
 
 echo "retrain_start ts=$(date -u +%Y-%m-%dT%H:%M:%SZ) symbols=${symbols_csv} timeframes=${timeframes_csv} fetch_days=${fetch_days}"
 
+# Download Macro Data (SPY, DXY) since 2017
+.venv/bin/bot-cripto fetch-macro --days 3300
+
 for sym in "${symbols[@]}"; do
   sym="$(echo "$sym" | xargs)"
   [[ -z "$sym" ]] && continue

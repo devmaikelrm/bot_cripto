@@ -64,7 +64,7 @@ class RiskEngine:
     def evaluate(
         self,
         prediction: PredictionOutput,
-        regime: MarketRegime,
+        regime_str: str,
         state: RiskState,
     ) -> RiskDecision:
         self._refresh_periods(state)
@@ -76,21 +76,38 @@ class RiskEngine:
             return RiskDecision(False, 0.0, f"Daily DD limit reached: {daily_dd:.2%}")
         if weekly_dd >= self.limits.max_weekly_drawdown:
             return RiskDecision(False, 0.0, f"Weekly DD limit reached: {weekly_dd:.2%}")
-        if regime == MarketRegime.HIGH_VOL:
-            return RiskDecision(False, 0.0, "Regime HIGH_VOL blocked")
+        
+        # Dynamic Multipliers based on ML Regime
+        regime_multipliers = {
+            "BULL_TREND": 1.2,
+            "BEAR_TREND": 1.0,
+            "RANGE_SIDEWAYS": 0.5,
+            "CRISIS_HIGH_VOL": 0.0,
+            "UNKNOWN": 0.5
+        }
+        multiplier = regime_multipliers.get(regime_str, 0.5)
+        
+        if multiplier <= 0:
+            return RiskDecision(False, 0.0, f"Regime {regime_str} blocked risk")
+
         if prediction.risk_score >= self.limits.risk_score_block_threshold:
             return RiskDecision(False, 0.0, "Prediction risk_score too high")
 
-        confidence_component = max(0.0, prediction.prob_up - 0.5) * 2.0
-        risk_penalty = max(0.0, 1.0 - prediction.risk_score)
+        # Dynamic sizing: use TFT confidence if it was enhanced with trajectory consistency
+        # Otherwise fallback to standard prob-based component
+        conf = getattr(prediction, "confidence", max(0.0, prediction.prob_up - 0.5) * 2.0)
+        
         raw = (
             self.limits.risk_per_trade
-            * confidence_component
-            * risk_penalty
+            * conf
+            * multiplier
             * self.limits.position_size_multiplier
         )
         size = min(max(raw, 0.0), self.limits.max_position_size)
 
-        reason = f"Risk OK: daily_dd={daily_dd:.2%}, weekly_dd={weekly_dd:.2%}, " f"size={size:.4f}"
+        reason = (
+            f"Risk OK: {regime_str} (mult={multiplier}), "
+            f"daily_dd={daily_dd:.2%}, size={size:.4f}"
+        )
         logger.info("risk_decision", allowed=True, position_size=size, reason=reason)
         return RiskDecision(True, size, reason)

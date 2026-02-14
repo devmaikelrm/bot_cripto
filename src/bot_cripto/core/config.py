@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     min_expected_return: Annotated[float, Field(ge=0.0)] = 0.002
     label_edge_return: Annotated[float, Field(ge=0.0)] = 0.0005
     fees_bps: Annotated[int, Field(ge=0)] = 10
-    regime_adx_trend_min: float = 20.0
+    regime_adx_trend_min: float = 18.0
     regime_atr_high_vol_pct: float = 0.02
     risk_per_trade: float = 0.01
     max_daily_drawdown: float = 0.03

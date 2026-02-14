@@ -229,6 +229,10 @@ class TelegramControlBot:
                 "/infer-now [SYMBOL]",
                 f"  Corre inference ahora y devuelve la senal. Ej: /infer-now {default_symbol}",
                 "",
+                "Entrenamiento:",
+                "/training",
+                "  Muestra progreso del TFT, uso de CPU/RAM y tiempo estimado.",
+                "",
                 "Datos / modelos:",
                 "/data",
                 "  Lista archivos .parquet en data/raw.",
@@ -376,6 +380,68 @@ class TelegramControlBot:
         code, out = self._run_cli(args, timeout_s=6 * 3600)
         return f"train rc={code}\n{out[-1500:]}"
 
+    def _cmd_training(self) -> str:
+        try:
+            # 1. Get Process Stats
+            ps = subprocess.run(
+                ["ps", "-u", "maikelrm95", "-o", "pid,pcpu,pmem,etime,cmd", "--sort=-pcpu"],
+                capture_output=True, text=True, check=False
+            )
+            lines = ps.stdout.splitlines()
+            train_proc = next((l for l in lines if ".venv/bin/python" in l and "train-" in l), None)
+            
+            # 2. Get RAM and Disk
+            free = subprocess.run(["free", "-h"], capture_output=True, text=True).stdout.splitlines()
+            ram_line = free[1].split() if len(free) > 1 else []
+            ram_usage = f"{ram_line[2]} / {ram_line[1]}" if len(ram_line) > 2 else "N/A"
+
+            state_dir = Path("/home/maikelrm95/bot-cripto-state")
+            du = subprocess.run(["du", "-sh", str(state_dir)], capture_output=True, text=True).stdout.split()
+            disk_info = du[0] if du else "N/A"
+
+            if not train_proc:
+                return "😴 *Sistema en Reposo*\nNo hay entrenamientos activos."
+
+            # Parse Worker Metrics
+            parts = train_proc.strip().split(None, 4)
+            pid, cpu, mem, elapsed = parts[0], parts[1], parts[2], parts[3]
+
+            # 3. Parse Progress
+            log_path = self.settings.logs_dir / "retrain_institutional_v2.log"
+            progress_info = "Esperando primera epoca..."
+            if log_path.exists():
+                log_tail = subprocess.run(["tail", "-n", "50", str(log_path)], capture_output=True, text=True).stdout
+                epochs = re.findall(r"Epoch\s+(\d+)", log_tail)
+                if epochs:
+                    progress_info = f"Entrenando Epoca {epochs[-1]}"
+                elif "iniciando_entrenamiento_tft" in log_tail:
+                    progress_info = "Cargando Red Neuronal..."
+
+            # 4. Build Clean List
+            return "\n".join([
+                "🚀 *Estado de Entrenamiento TFT*",
+                "-------------------------",
+                f"✅ *Proceso:* Activo (PID {pid})",
+                f"💻 *CPU:* {cpu}%",
+                f"🧠 *RAM:* {mem}% ({ram_usage})",
+                f"💾 *Disco:* {disk_info}",
+                f"⏱️ *Tiempo:* {elapsed}",
+                f"📊 *Progreso:* {progress_info}",
+                "-------------------------",
+                "_Nota: Entrenamiento desde 2017 (12-24h en CPU)._"
+            ])
+
+        except Exception as exc:
+            return f"❌ Error: {exc}"
+
+        except Exception as exc:
+            logger.error("training_cmd_error", error=str(exc))
+            return f"❌ *Error en Dashboard*: {exc}"
+
+        except Exception as exc:
+            logger.error("training_cmd_error", error=str(exc))
+            return f"❌ Error en Dashboard: {exc}"
+
     def _cmd_backtest(self, symbol: str, folds: int) -> str:
         if not _SYMBOL_RE.match(symbol):
             return "invalid symbol format"
@@ -400,6 +466,9 @@ class TelegramControlBot:
                 return
             if cmd == "/status":
                 self._send(upd.chat_id, self._cmd_status())
+                return
+            if cmd == "/training":
+                self._send(upd.chat_id, self._cmd_training())
                 return
             if cmd == "/pause":
                 minutes = _parse_int(args[0] if args else "15", 15)

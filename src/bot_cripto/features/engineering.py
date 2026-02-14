@@ -10,11 +10,15 @@ import numpy as np
 import pandas as pd
 
 from bot_cripto.core.logging import get_logger
+from bot_cripto.data.macro import MacroFetcher
+from bot_cripto.core.config import get_settings
+from bot_cripto.features.microstructure import MicrostructureFeatures
 
 logger = get_logger("features.engineering")
 
 
 class TechnicalAnalysis:
+# ... (rest of class)
     """Librería de indicadores técnicos vectorizados."""
 
     @staticmethod
@@ -66,6 +70,41 @@ class TechnicalAnalysis:
         return series.rolling(window=window).std()
 
 
+class MacroMerger:
+    """Merges macro-economic data into the high-frequency crypto dataset."""
+
+    def __init__(self) -> None:
+        self.settings = get_settings()
+
+    def merge(self, crypto_df: pd.DataFrame) -> pd.DataFrame:
+        """Joins macro data (daily) into crypto data (e.g. 5m) via forward fill."""
+        fetcher = MacroFetcher(self.settings)
+        macro_df = fetcher.load_macro_all()
+        
+        if macro_df.empty:
+            logger.warning("no_macro_data_found_skipping_merge")
+            return crypto_df
+
+        # Ensure crypto index is sorted and TZ-aware (UTC)
+        crypto_df = crypto_df.sort_index()
+        
+        # Merge macro data. Since macro is daily, we join and then forward fill.
+        # We use merge_asof for efficiency or a simple join + ffill.
+        merged = pd.merge_asof(
+            crypto_df,
+            macro_df,
+            left_index=True,
+            right_index=True,
+            direction="backward"
+        )
+        
+        # Fill any initial NaNs if macro data started after crypto data
+        merged = merged.ffill().bfill()
+        
+        logger.info("macro_data_merged", columns=list(macro_df.columns))
+        return merged
+
+
 class FeaturePipeline:
     """Pipeline de transformación de datos crudos a features."""
 
@@ -83,37 +122,91 @@ class FeaturePipeline:
             raise ValueError("FeaturePipeline expects a DatetimeIndex.")
         dt_index = df.index
 
+        # 0. Merge Macro Data
+        merger = MacroMerger()
+        df = merger.merge(df)
+
+        # 0.5 Microstructure & Sentiment Features
+        if "obi" in df.columns:
+            df["obi_score"] = df["obi"].rolling(window=3).mean().fillna(0.0)
+        else:
+            df["obi_score"] = 0.0
+
+        if "whale_pressure" in df.columns:
+            # Net volume of large trades
+            df["whale_score"] = df["whale_pressure"].rolling(window=5).mean().fillna(0.0)
+        else:
+            df["whale_score"] = 0.0
+
+        if "sentiment" in df.columns:
+            # Sentiment score from news
+            df["sentiment_score"] = df["sentiment"].rolling(window=12).mean().fillna(0.0)
+        else:
+            df["sentiment_score"] = 0.0
+
         # 1. Indicadores básicos
-        df["log_ret"] = TechnicalAnalysis.log_returns(df["close"])
-        df["volatility"] = TechnicalAnalysis.realized_volatility(df["log_ret"])
-        df["volatility_100"] = TechnicalAnalysis.realized_volatility(df["log_ret"], window=100)
+        # Log Returns & Volatility
+        df["log_ret"] = np.log(df["close"] / df["close"].shift(1))
+        
+        # Volatilidad realizada (Rolling Std Dev) - 20, 50, 100
+        df["volatility_20"] = df["log_ret"].rolling(window=20).std()
+        df["volatility_50"] = df["log_ret"].rolling(window=50).std()
+        df["volatility_100"] = df["log_ret"].rolling(window=100).std()
+        
+        # Retornos acumulados (Momentum a corto plazo)
+        df["ret_1"] = df["log_ret"]  # 1 periodo
+        df["ret_3"] = df["log_ret"].rolling(window=3).sum()
         df["ret_5"] = df["log_ret"].rolling(window=5).sum()
         df["ret_10"] = df["log_ret"].rolling(window=10).sum()
         df["ret_20"] = df["log_ret"].rolling(window=20).sum()
 
-        df["rsi"] = TechnicalAnalysis.rsi(df["close"])
-        df["rsi_delta"] = df["rsi"].diff()
+        # RSI & Delta
+        rsi_series = TechnicalAnalysis.rsi(df["close"], period=14)
+        df["rsi"] = rsi_series
+        df["rsi_delta"] = rsi_series.diff()
 
-        macd_df = TechnicalAnalysis.macd(df["close"])
+        # MACD
+        macd_df = TechnicalAnalysis.macd(df["close"], fast=12, slow=26, signal=9)
         df = pd.concat([df, macd_df], axis=1)
         df["macd_hist_delta"] = df["macd_hist"].diff()
 
-        bb_df = TechnicalAnalysis.bollinger_bands(df["close"])
+        # Bollinger Bands
+        bb_df = TechnicalAnalysis.bollinger_bands(df["close"], period=20, std_dev=2)
         df = pd.concat([df, bb_df], axis=1)
         df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
 
-        df["atr"] = TechnicalAnalysis.atr(df["high"], df["low"], df["close"])
-        df["atr_pct"] = df["atr"] / df["close"]
+        # ATR & ATR%
+        atr_series = TechnicalAnalysis.atr(df["high"], df["low"], df["close"], period=14)
+        df["atr"] = atr_series
+        df["atr_pct"] = atr_series / df["close"]
+
+        # EMA Slopes (Tendencia)
+        ema_9 = df["close"].ewm(span=9, adjust=False).mean()
+        ema_21 = df["close"].ewm(span=21, adjust=False).mean()
+        df["ema_slope_9"] = (ema_9 - ema_9.shift(1)) / ema_9.shift(1)
+        df["ema_slope_21"] = (ema_21 - ema_21.shift(1)) / ema_21.shift(1)
 
         # 2. Volume Features
+        # Rolling Volume Stats (20 periodos)
+        vol_window = 20
+        df["vol_mean_20"] = df["volume"].rolling(window=vol_window).mean()
+        df["vol_std_20"] = df["volume"].rolling(window=vol_window).std()
+        
         # Relative Volume (volumen actual / media movil 20)
-        # FX providers may have volume==0. Avoid NaNs/infs wiping the dataset.
-        vol_ma = df["volume"].rolling(20).mean()
-        df["rel_vol"] = np.where(vol_ma > 0, df["volume"] / vol_ma, 0.0)
+        # Avoid division by zero
+        df["rel_vol"] = np.where(df["vol_mean_20"] > 0, df["volume"] / df["vol_mean_20"], 0.0)
+        
+        # Log Volume
         df["log_volume"] = np.log1p(df["volume"])
-        vol_mean = df["log_ret"].rolling(100).mean()
-        vol_std = df["log_ret"].rolling(100).std().replace(0.0, np.nan)
-        df["vol_z"] = ((df["log_ret"] - vol_mean) / vol_std).fillna(0.0)
+        
+        # Z-Score de Volatilidad (para detectar regímenes extremos)
+        # Usamos volatility_100 como base de largo plazo
+        vol_base_mean = df["volatility_100"].rolling(window=100).mean()
+        vol_base_std = df["volatility_100"].rolling(window=100).std()
+        df["vol_z"] = ((df["volatility_100"] - vol_base_mean) / vol_base_std).fillna(0.0)
+
+        # 2.5 Microstructure Features (OHLCV-derived)
+        df = MicrostructureFeatures.compute_all(df, window=20)
 
         # 3. Time Features
         # Seno/Coseno de hora y dia para ciclicidad

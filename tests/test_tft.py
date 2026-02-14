@@ -55,7 +55,7 @@ class TestTFTPredictor:
 
         meta = model.train(tft_sample_df, target_col="close")
 
-        assert meta.model_type == "tft_pytorch"
+        assert meta.model_type == "tft_pytorch_improved"
         assert "val_loss" in meta.metrics
         assert model.model is not None
 

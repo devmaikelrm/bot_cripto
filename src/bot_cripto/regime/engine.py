@@ -33,7 +33,7 @@ class RegimeEngine:
         self,
         adx_period: int = 14,
         atr_period: int = 14,
-        adx_trend_min: float = 20.0,
+        adx_trend_min: float = 18.0,
         atr_high_vol_pct: float = 0.02,
     ) -> None:
         self.adx_period = adx_period

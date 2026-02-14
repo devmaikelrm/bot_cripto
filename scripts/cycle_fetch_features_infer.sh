@@ -29,6 +29,9 @@ IFS=',' read -r -a timeframes <<< "$timeframes_csv"
 
 echo "cycle_start ts=$(date -u +%Y-%m-%dT%H:%M:%SZ) symbols=${symbols_csv} timeframes=${timeframes_csv} fetch_days=${fetch_days}"
 
+# Download/Update Macro Data
+.venv/bin/bot-cripto fetch-macro --days 30
+
 for sym in "${symbols[@]}"; do
   sym="$(echo "$sym" | xargs)"
   [[ -z "$sym" ]] && continue

@@ -1,7 +1,10 @@
+from datetime import UTC, datetime, timedelta
+
 from bot_cripto.core.config import Settings
 from bot_cripto.decision.engine import Action, TradeSignal
 from bot_cripto.execution.live import LiveExecutor
 from bot_cripto.models.base import PredictionOutput
+from bot_cripto.ops.operator_flags import OperatorFlags, OperatorFlagsStore
 
 
 def _live_settings(tmp_path) -> Settings:
@@ -18,6 +21,13 @@ def _live_settings(tmp_path) -> Settings:
     return settings
 
 
+def _arm_live(settings: Settings) -> None:
+    """Write operator flags that arm live trading for the next hour."""
+    store = OperatorFlagsStore(settings.logs_dir / "operator_flags.json")
+    armed_until = (datetime.now(tz=UTC) + timedelta(hours=1)).isoformat()
+    store.save(OperatorFlags(live_armed_until=armed_until))
+
+
 def test_live_executor_blocks_without_prediction(tmp_path) -> None:
     settings = _live_settings(tmp_path)
     executor = LiveExecutor(settings=settings)
@@ -28,6 +38,7 @@ def test_live_executor_blocks_without_prediction(tmp_path) -> None:
 
 def test_live_executor_blocks_on_hard_stop_loss(tmp_path) -> None:
     settings = _live_settings(tmp_path)
+    _arm_live(settings)
     executor = LiveExecutor(settings=settings)
     signal = TradeSignal(action=Action.BUY, confidence=0.8, weight=1.0, reason="entry")
     pred = PredictionOutput(
@@ -45,6 +56,7 @@ def test_live_executor_blocks_on_hard_stop_loss(tmp_path) -> None:
 
 def test_live_executor_returns_hard_stop_price(tmp_path) -> None:
     settings = _live_settings(tmp_path)
+    _arm_live(settings)
     executor = LiveExecutor(settings=settings)
     signal = TradeSignal(action=Action.BUY, confidence=0.8, weight=1.0, reason="entry")
     pred = PredictionOutput(

@@ -37,9 +37,9 @@ ENV/
 # ──────────────────────────────────────────────
 # Data & Models (large files)
 # ──────────────────────────────────────────────
-data/
-models/
-logs/
+/data/
+/models/
+/logs/
 lightning_logs/
 *.parquet
 *.h5
