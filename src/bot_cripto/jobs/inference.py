@@ -6,7 +6,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
-from bot_cripto.core.config import get_settings
+from bot_cripto.core.config import Settings, get_settings
 from bot_cripto.core.logging import get_logger
 from bot_cripto.data.quant_signals import QuantSignalFetcher
 from bot_cripto.decision.engine import Action, DecisionEngine
@@ -74,7 +74,7 @@ def _to_contract_decision(action: Action, blocked: bool) -> str:
 
 
 def _fetch_quant_signals_safe(
-    settings: object, target: str
+    settings: Settings, target: str
 ) -> dict[str, float]:
     """Fetch quant signals with fallback to cached/neutral values."""
     try:

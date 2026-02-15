@@ -83,7 +83,7 @@ class RiskEngine:
             "BEAR_TREND": 1.0,
             "RANGE_SIDEWAYS": 0.5,
             "CRISIS_HIGH_VOL": 0.0,
-            "UNKNOWN": 0.5
+            "UNKNOWN": 0.0
         }
         multiplier = regime_multipliers.get(regime_str, 0.0)
         

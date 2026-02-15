@@ -371,10 +371,14 @@ class RealisticBacktester:
 
         # Sharpe — annualised assuming ~252 trading days
         arr = np.array(net_returns)
-        std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
-        per_trade_sharpe = float(np.mean(arr)) / std if std > 0 else 0.0
-        trades_per_year = 252.0 * max(len(trades) / max(1, trades[-1].exit_idx - trades[0].entry_idx), 1.0)
-        sharpe = per_trade_sharpe * math.sqrt(trades_per_year)
+        if len(arr) < 5:
+            sharpe = 0.0
+        else:
+            std = float(np.std(arr, ddof=1))
+            per_trade_sharpe = float(np.mean(arr)) / std if std > 0 else 0.0
+            bar_span = max(1, trades[-1].exit_idx - trades[0].entry_idx)
+            trades_per_year = 252.0 * len(trades) / bar_span
+            sharpe = per_trade_sharpe * math.sqrt(trades_per_year)
 
         # Max drawdown — percentage of equity (not absolute dollars)
         equity_curve = initial_equity + np.cumsum(net_pnls)
