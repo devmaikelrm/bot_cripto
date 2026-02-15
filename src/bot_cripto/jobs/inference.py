@@ -8,17 +8,18 @@ from typing import Any
 
 from bot_cripto.core.config import get_settings
 from bot_cripto.core.logging import get_logger
+from bot_cripto.data.quant_signals import QuantSignalFetcher
 from bot_cripto.decision.engine import Action, DecisionEngine
 from bot_cripto.jobs.common import latest_model_dir, load_feature_dataset, write_signal_json
 from bot_cripto.models.base import BasePredictor, PredictionOutput
 from bot_cripto.models.baseline import BaselineModel
-from bot_cripto.models.ensemble import WeightedEnsemble
+from bot_cripto.models.ensemble import EnsembleWeights, WeightedEnsemble
+from bot_cripto.models.meta import MetaModel
 from bot_cripto.models.tft import TFTPredictor
-from bot_cripto.monitoring.performance_store import PerformancePoint, PerformanceStore
 from bot_cripto.monitoring.watchtower_store import WatchtowerStore
 from bot_cripto.notifications.telegram import TelegramNotifier
 from bot_cripto.ops.operator_flags import default_flags_store
-from bot_cripto.regime.engine import MarketRegime, RegimeEngine
+from bot_cripto.regime.ml_engine import MLRegimeEngine
 from bot_cripto.risk.engine import RiskEngine, RiskLimits
 from bot_cripto.risk.state_store import RiskStateStore
 
@@ -41,7 +42,7 @@ def _load_model_and_path(
         else:
             model = BaselineModel()
             logger.info("model_type_detected", type="baseline", path=str(path))
-        
+
         model.load(path)
         logger.info("model_loaded", model=model_name, path=str(path))
         return model, path
@@ -52,9 +53,14 @@ def _load_model_and_path(
 
 def _resolve_model(
     primary: tuple[BasePredictor, Path] | None,
-    fallback: tuple[BasePredictor, Path],
+    fallback: tuple[BasePredictor, Path] | None,
 ) -> tuple[BasePredictor, Path]:
-    return primary if primary is not None else fallback
+    result = primary if primary is not None else fallback
+    if result is None:
+        raise FileNotFoundError(
+            "No model available: both primary and fallback are missing."
+        )
+    return result
 
 
 def _to_contract_decision(action: Action, blocked: bool) -> str:
@@ -67,26 +73,20 @@ def _to_contract_decision(action: Action, blocked: bool) -> str:
     return "NO_TRADE"
 
 
-from bot_cripto.core.config import get_settings
-from bot_cripto.core.logging import get_logger
-from bot_cripto.data.quant_signals import QuantSignalFetcher
-from bot_cripto.decision.engine import Action, DecisionEngine
-from bot_cripto.jobs.common import latest_model_dir, load_feature_dataset, write_signal_json
-from bot_cripto.models.base import BasePredictor, PredictionOutput
-from bot_cripto.models.baseline import BaselineModel
-from bot_cripto.models.ensemble import WeightedEnsemble
-from bot_cripto.models.meta import MetaModel
-from bot_cripto.models.tft import TFTPredictor
-from bot_cripto.monitoring.performance_store import PerformancePoint, PerformanceStore
-from bot_cripto.monitoring.watchtower_store import WatchtowerStore
-from bot_cripto.notifications.telegram import TelegramNotifier
-from bot_cripto.ops.operator_flags import default_flags_store
-from bot_cripto.regime.ml_engine import MLRegimeEngine
-from bot_cripto.risk.engine import RiskEngine, RiskLimits
-from bot_cripto.risk.state_store import RiskStateStore
+def _fetch_quant_signals_safe(
+    settings: object, target: str
+) -> dict[str, float]:
+    """Fetch quant signals with fallback to cached/neutral values."""
+    try:
+        fetcher = QuantSignalFetcher(settings)
+        funding = fetcher.fetch_funding_rate(target)
+        fng = fetcher.fetch_fear_and_greed()
+        fetcher.save_signals(target, funding, fng)
+        return {"funding_rate": funding, "fear_greed": fng}
+    except Exception as exc:
+        logger.warning("quant_signals_fetch_failed_using_defaults", error=str(exc))
+        return {"funding_rate": 0.0, "fear_greed": 0.5}
 
-logger = get_logger("jobs.inference")
-# ... (rest of helper functions same) ...
 
 def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any]:
     started = perf_counter()
@@ -95,14 +95,10 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     tf = timeframe or settings.timeframe
     df = load_feature_dataset(settings, target, timeframe=tf)
 
-    # 1. Advanced Quant Signals
-    quant_fetcher = QuantSignalFetcher(settings)
-    funding = quant_fetcher.fetch_funding_rate(target)
-    fng = quant_fetcher.fetch_fear_and_greed()
-    quant_fetcher.save_signals(target, funding, fng)
-    q_data = {"funding_rate": funding, "fear_greed": fng}
+    # 1. Quant Signals (with fallback — never blocks inference)
+    q_data = _fetch_quant_signals_safe(settings, target)
 
-    # 2. Advanced Models Load
+    # 2. Load models
     trend = _load_model_and_path("trend", target, timeframe=tf)
     ret = _load_model_and_path("return", target, timeframe=tf)
     risk = _load_model_and_path("risk", target, timeframe=tf)
@@ -110,11 +106,11 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     fallback = _load_model_and_path("baseline", target, timeframe=tf)
 
     if fallback is None and (trend is None or ret is None or risk is None):
-        raise FileNotFoundError("No models found.")
+        raise FileNotFoundError("No models found: need trend+return+risk or baseline.")
 
-    trend_model, trend_path = _resolve_model(trend, fallback or (None, None))
-    ret_model, ret_path = _resolve_model(ret, fallback or (None, None))
-    risk_model, risk_path = _resolve_model(risk, fallback or (None, None))
+    trend_model, trend_path = _resolve_model(trend, fallback)
+    ret_model, ret_path = _resolve_model(ret, fallback)
+    risk_model, risk_path = _resolve_model(risk, fallback)
 
     # 3. Predict & Ensemble
     pred_trend = trend_model.predict(df)
@@ -126,7 +122,6 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         nbeats_model, _ = nbeats
         pred_nbeats = nbeats_model.predict(df)
 
-    from bot_cripto.models.ensemble import EnsembleWeights
     weights = EnsembleWeights(
         trend=0.30, ret=0.25, risk=0.25, nbeats=0.20
     ) if pred_nbeats is not None else EnsembleWeights()

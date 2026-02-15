@@ -40,6 +40,16 @@ class PredictionOutput:
     risk_score: float
     """Probabilidad de evento adverso / drawdown (0.0 a 1.0)."""
 
+    def __post_init__(self) -> None:
+        if not (0.0 <= self.prob_up <= 1.0):
+            raise ValueError(f"prob_up must be in [0, 1], got {self.prob_up}")
+        if not (0.0 <= self.risk_score <= 1.0):
+            raise ValueError(f"risk_score must be in [0, 1], got {self.risk_score}")
+        if self.p10 > self.p90:
+            raise ValueError(
+                f"p10 ({self.p10}) must be <= p90 ({self.p90})"
+            )
+
     def to_dict(self) -> dict[str, float]:
         """Serializa a diccionario para JSON."""
         return {

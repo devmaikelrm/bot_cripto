@@ -85,7 +85,7 @@ class RiskEngine:
             "CRISIS_HIGH_VOL": 0.0,
             "UNKNOWN": 0.5
         }
-        multiplier = regime_multipliers.get(regime_str, 0.5)
+        multiplier = regime_multipliers.get(regime_str, 0.0)
         
         if multiplier <= 0:
             return RiskDecision(False, 0.0, f"Regime {regime_str} blocked risk")
