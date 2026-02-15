@@ -337,10 +337,10 @@ class RealisticBacktester:
             )
             equity += net_pnl
 
-        return self._build_report(trades)
+        return self._build_report(trades, self.initial_equity)
 
     @staticmethod
-    def _build_report(trades: list[Trade]) -> RealisticBacktestReport:
+    def _build_report(trades: list[Trade], initial_equity: float = 10_000.0) -> RealisticBacktestReport:
         if not trades:
             return RealisticBacktestReport(
                 total_trades=0,
@@ -369,16 +369,18 @@ class RealisticBacktester:
         total_gross = sum(t.gross_pnl for t in trades)
         total_net = sum(t.net_pnl for t in trades)
 
-        # Sharpe
+        # Sharpe — annualised assuming ~252 trading days
         arr = np.array(net_returns)
         std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
-        sharpe = float(np.mean(arr)) / std if std > 0 else 0.0
+        per_trade_sharpe = float(np.mean(arr)) / std if std > 0 else 0.0
+        trades_per_year = 252.0 * max(len(trades) / max(1, trades[-1].exit_idx - trades[0].entry_idx), 1.0)
+        sharpe = per_trade_sharpe * math.sqrt(trades_per_year)
 
-        # Max drawdown from equity curve
-        equity_curve = np.cumsum(net_pnls)
+        # Max drawdown — percentage of equity (not absolute dollars)
+        equity_curve = initial_equity + np.cumsum(net_pnls)
         peak = np.maximum.accumulate(equity_curve)
-        dd = equity_curve - peak
-        max_dd = float(np.min(dd)) if len(dd) > 0 else 0.0
+        dd_pct = (equity_curve - peak) / np.where(peak > 0, peak, 1.0)
+        max_dd = float(np.min(dd_pct)) if len(dd_pct) > 0 else 0.0
 
         # Profit factor
         gross_profit = sum(t.net_pnl for t in winners)

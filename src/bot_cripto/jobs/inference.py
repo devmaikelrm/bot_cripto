@@ -130,15 +130,15 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         pred_trend, pred_return, pred_risk, nbeats_pred=pred_nbeats
     )
 
-    # 4. ML Regime Detection
+    # 4. ML Regime Detection (never train during inference)
     regime_engine = MLRegimeEngine()
     regime_path = settings.models_dir / "regime" / target.replace("/", "_")
     if (regime_path / "regime_model.joblib").exists():
         regime_engine.load(regime_path)
+        regime_str = regime_engine.predict(df)
     else:
-        # Fallback if not trained yet
-        regime_engine.fit(df.tail(1000))
-    regime_str = regime_engine.predict(df)
+        logger.warning("regime_model_missing_using_unknown", path=str(regime_path))
+        regime_str = "UNKNOWN"
 
     # 5. Meta-model Filter
     meta_model = MetaModel()
