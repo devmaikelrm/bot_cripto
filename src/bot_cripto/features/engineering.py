@@ -108,6 +108,38 @@ class MacroMerger:
 class FeaturePipeline:
     """Pipeline de transformación de datos crudos a features."""
 
+    @staticmethod
+    def _merge_micro_snapshots(df: pd.DataFrame) -> pd.DataFrame:
+        """Load microstructure snapshots and merge into OHLCV via forward-fill."""
+        settings = get_settings()
+        # Detect symbol from parquet filename convention or use default
+        symbol = settings.symbols_list[0].replace("/", "_")
+        snap_path = settings.data_dir_raw / f"{symbol}_micro_snapshots.parquet"
+
+        micro_cols = ["obi", "whale_pressure", "sentiment"]
+        if not snap_path.exists():
+            for col in micro_cols:
+                df[col] = 0.0
+            return df
+
+        try:
+            snaps = pd.read_parquet(snap_path)
+            snaps = snaps.sort_index()
+            # merge_asof: assign each OHLCV bar the most recent snapshot
+            merged = pd.merge_asof(
+                df, snaps[micro_cols],
+                left_index=True, right_index=True, direction="backward",
+            )
+            # Fill any leading NaNs (before first snapshot) with 0
+            for col in micro_cols:
+                merged[col] = merged[col].fillna(0.0)
+            return merged
+        except Exception as exc:
+            logger.warning("micro_snapshot_merge_failed", error=str(exc))
+            for col in micro_cols:
+                df[col] = 0.0
+            return df
+
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aplica indicadores y limpieza."""
         log = logger.bind(rows=len(df))
@@ -126,32 +158,22 @@ class FeaturePipeline:
         merger = MacroMerger()
         df = merger.merge(df)
 
-        # 0.5 Microstructure & Sentiment Features
-        if "obi" in df.columns:
-            df["obi_score"] = df["obi"].rolling(window=3).mean().fillna(0.0)
-        else:
-            df["obi_score"] = 0.0
-
-        if "whale_pressure" in df.columns:
-            # Net volume of large trades
-            df["whale_score"] = df["whale_pressure"].rolling(window=5).mean().fillna(0.0)
-        else:
-            df["whale_score"] = 0.0
-
-        if "sentiment" in df.columns:
-            # Sentiment score from news
-            df["sentiment_score"] = df["sentiment"].rolling(window=12).mean().fillna(0.0)
-        else:
-            df["sentiment_score"] = 0.0
+        # 0.5 Microstructure & Sentiment Features (from snapshot file)
+        df = self._merge_micro_snapshots(df)
+        df["obi_score"] = df["obi"].rolling(window=3).mean().fillna(0.0)
+        df["whale_score"] = df["whale_pressure"].rolling(window=5).mean().fillna(0.0)
+        df["sentiment_score"] = df["sentiment"].rolling(window=12).mean().fillna(0.0)
 
         # 1. Indicadores básicos
         # Log Returns & Volatility
         df["log_ret"] = np.log(df["close"] / df["close"].shift(1))
         
         # Volatilidad realizada (Rolling Std Dev) - 20, 50, 100
-        df["volatility_20"] = df["log_ret"].rolling(window=20).std()
-        df["volatility_50"] = df["log_ret"].rolling(window=50).std()
-        df["volatility_100"] = df["log_ret"].rolling(window=100).std()
+        df["volatility_20"] = df["log_ret"].rolling(window=20, min_periods=20).std()
+        df["volatility_50"] = df["log_ret"].rolling(window=50, min_periods=20).std()
+        df["volatility_100"] = df["log_ret"].rolling(window=100, min_periods=20).std()
+        # Backward compatibility with legacy feature contracts/tests.
+        df["volatility"] = df["volatility_20"]
         
         # Retornos acumulados (Momentum a corto plazo)
         df["ret_1"] = df["log_ret"]  # 1 periodo
@@ -201,8 +223,8 @@ class FeaturePipeline:
         
         # Z-Score de Volatilidad (para detectar regímenes extremos)
         # Usamos volatility_100 como base de largo plazo
-        vol_base_mean = df["volatility_100"].rolling(window=100).mean()
-        vol_base_std = df["volatility_100"].rolling(window=100).std()
+        vol_base_mean = df["volatility_100"].rolling(window=100, min_periods=20).mean()
+        vol_base_std = df["volatility_100"].rolling(window=100, min_periods=20).std()
         df["vol_z"] = ((df["volatility_100"] - vol_base_mean) / vol_base_std).fillna(0.0)
 
         # 2.5 Microstructure Features (OHLCV-derived)

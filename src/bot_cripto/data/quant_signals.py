@@ -86,13 +86,76 @@ class QuantSignalFetcher:
             logger.warning("fear_greed_fetch_failed", error=str(exc))
             return 0.5
 
-    def save_signals(self, symbol: str, funding: float, fng: float) -> None:
+    def fetch_open_interest(self, symbol: str = "BTC/USDT") -> float:
+        """Fetch aggregated open interest (in contracts) from Binance Futures."""
+        cache_key = f"oi:{symbol}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            safe_symbol = symbol.replace("/", "")
+            url = f"https://fapi.binance.com/fapi/v1/openInterest?symbol={safe_symbol}"
+            response = requests.get(url, timeout=_REQUEST_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            oi = float(data.get("openInterest", 0.0))
+            logger.info("open_interest_captured", symbol=symbol, oi=oi)
+            self._cache_set(cache_key, oi)
+            return oi
+        except Exception as exc:
+            logger.warning("open_interest_fetch_failed", error=str(exc))
+            return 0.0
+
+    def fetch_long_short_ratio(self, symbol: str = "BTC/USDT") -> float:
+        """Fetch global long/short account ratio from Binance Futures.
+
+        Returns ratio > 1 means more longs, < 1 means more shorts.
+        """
+        cache_key = f"lsr:{symbol}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            safe_symbol = symbol.replace("/", "")
+            url = (
+                f"https://fapi.binance.com/futures/data/globalLongShortAccountRatio"
+                f"?symbol={safe_symbol}&period=5m&limit=1"
+            )
+            response = requests.get(url, timeout=_REQUEST_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            if data:
+                ratio = float(data[0].get("longShortRatio", 1.0))
+            else:
+                ratio = 1.0
+            logger.info("long_short_ratio_captured", symbol=symbol, ratio=ratio)
+            self._cache_set(cache_key, ratio)
+            return ratio
+        except Exception as exc:
+            logger.warning("long_short_ratio_fetch_failed", error=str(exc))
+            return 1.0
+
+    def save_signals(
+        self,
+        symbol: str,
+        funding: float,
+        fng: float,
+        open_interest: float = 0.0,
+        long_short_ratio: float = 1.0,
+    ) -> None:
         """Save signals to a parquet file for merging."""
         path = self.data_dir / f"signals_{symbol.replace('/', '_')}.parquet"
-        df = pd.DataFrame({
-            "funding_rate": [funding],
-            "fear_greed": [fng]
-        }, index=[pd.Timestamp.now(tz="UTC")])
+        df = pd.DataFrame(
+            {
+                "funding_rate": [funding],
+                "fear_greed": [fng],
+                "open_interest": [open_interest],
+                "long_short_ratio": [long_short_ratio],
+            },
+            index=[pd.Timestamp.now(tz="UTC")],
+        )
         df.index.name = "date"
 
         lock = FileLock(str(path) + ".lock")

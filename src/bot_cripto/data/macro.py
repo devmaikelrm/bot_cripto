@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import pandas as pd
-import yfinance as yf
-from filelock import FileLock
 from pathlib import Path
+
+import pandas as pd
+from filelock import FileLock
+
 from bot_cripto.core.config import Settings
 from bot_cripto.core.logging import get_logger
 
@@ -26,6 +27,8 @@ class MacroFetcher:
 
         for ticker in tickers:
             try:
+                import yfinance as yf  # local import to keep optional dependency
+
                 # Use yfinance to download daily data. 3500 days covers back to 2016.
                 period = "max" if days > 3000 else f"{days}d"
                 data = yf.download(ticker, period=period, interval="1d", progress=False)

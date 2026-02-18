@@ -79,26 +79,20 @@ def fetch(
         typer.echo("No data downloaded")
         raise typer.Exit(code=1)
 
-    # Capture OBI, Whale Pressure and Sentiment for the current moment
-    if days <= 1:
-        # 1. Order Book Imbalance
-        obi = fetcher.fetch_order_book_imbalance(target_symbol)
-        df["obi"] = 0.0
-        df.iloc[-1, df.columns.get_loc("obi")] = obi
-        
-        # 2. Whale Pressure
-        whale_p = fetcher.fetch_whale_pressure(target_symbol)
-        df["whale_pressure"] = 0.0
-        df.iloc[-1, df.columns.get_loc("whale_pressure")] = whale_p
-        
-        # 3. Sentiment (Optional)
+    # Capture real-time microstructure snapshot (always, regardless of days)
+    obi = fetcher.fetch_order_book_imbalance(target_symbol)
+    whale_p = fetcher.fetch_whale_pressure(target_symbol)
+
+    sentiment_score = 0.0
+    try:
         from bot_cripto.data.sentiment import SentimentFetcher
         sent_fetcher = SentimentFetcher(effective_settings)
         sentiment_score = sent_fetcher.fetch_sentiment(target_symbol.split("/")[0])
-        df["sentiment"] = 0.0
-        df.iloc[-1, df.columns.get_loc("sentiment")] = sentiment_score
-        
-        typer.echo(f"Captured Micro: OBI={obi:.4f}, Whale={whale_p:.2f}, Sent={sentiment_score:.2f}")
+    except Exception:
+        pass
+
+    fetcher.save_microstructure_snapshot(target_symbol, obi, whale_p, sentiment_score)
+    typer.echo(f"Micro snapshot: OBI={obi:.4f}, Whale={whale_p:.2f}, Sent={sentiment_score:.2f}")
 
     path = fetcher.save_data(df, target_symbol, target_timeframe)
     typer.echo(f"Saved raw data: {path}")
@@ -255,6 +249,7 @@ def train(
     symbol: str | None = typer.Option(None, help="Pair"),
     model_type: str = typer.Option("baseline", help="Model type: baseline|tft"),
     timeframe: str | None = typer.Option(None, help="Timeframe like 5m, 15m, 1h (overrides TIMEFRAME)"),
+    checkpoint: str | None = typer.Option(None, help="Path to checkpoint to resume training"),
 ) -> None:
     from bot_cripto.jobs.common import write_model_metadata
     from bot_cripto.models.base import BasePredictor
@@ -290,7 +285,12 @@ def train(
         typer.echo(f"Unsupported model type: {model_type}")
         raise typer.Exit(code=1)
 
-    metadata = model.train(df, target_col="close")
+    # Pass checkpoint if provided
+    if checkpoint and hasattr(model, "train_with_checkpoint"):
+        metadata = model.train_with_checkpoint(df, checkpoint, target_col="close")
+    else:
+        metadata = model.train(df, target_col="close")
+    
     model.save(model_path)
     write_model_metadata(model_path, metadata)
     typer.echo(f"Model saved: {model_path}")

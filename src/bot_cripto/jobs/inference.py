@@ -6,6 +6,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any
 
+import numpy as np
+
 from bot_cripto.core.config import Settings, get_settings
 from bot_cripto.core.logging import get_logger
 from bot_cripto.data.quant_signals import QuantSignalFetcher
@@ -81,11 +83,43 @@ def _fetch_quant_signals_safe(
         fetcher = QuantSignalFetcher(settings)
         funding = fetcher.fetch_funding_rate(target)
         fng = fetcher.fetch_fear_and_greed()
-        fetcher.save_signals(target, funding, fng)
-        return {"funding_rate": funding, "fear_greed": fng}
+        oi = fetcher.fetch_open_interest(target)
+        lsr = fetcher.fetch_long_short_ratio(target)
+        fetcher.save_signals(target, funding, fng, open_interest=oi, long_short_ratio=lsr)
+        return {
+            "funding_rate": funding,
+            "fear_greed": fng,
+            "open_interest": oi,
+            "long_short_ratio": lsr,
+        }
     except Exception as exc:
         logger.warning("quant_signals_fetch_failed_using_defaults", error=str(exc))
-        return {"funding_rate": 0.0, "fear_greed": 0.5}
+        return {"funding_rate": 0.0, "fear_greed": 0.5, "open_interest": 0.0, "long_short_ratio": 1.0}
+
+
+def _calibrate_prediction(pred: PredictionOutput, model_path: Path) -> PredictionOutput:
+    """Apply probability calibration if a calibrator exists for this model."""
+    cal_path = model_path / "calibrator.joblib"
+    if not cal_path.exists():
+        return pred
+    try:
+        from bot_cripto.models.calibration import ProbabilityCalibrator
+        calibrator = ProbabilityCalibrator()
+        calibrator.load(cal_path)
+        raw = np.array([pred.prob_up])
+        calibrated = float(calibrator.predict(raw)[0])
+        logger.info("prediction_calibrated", raw=pred.prob_up, calibrated=calibrated)
+        return PredictionOutput(
+            prob_up=calibrated,
+            expected_return=pred.expected_return,
+            p10=pred.p10,
+            p50=pred.p50,
+            p90=pred.p90,
+            risk_score=pred.risk_score,
+        )
+    except Exception as exc:
+        logger.warning("calibration_failed_using_raw", error=str(exc))
+        return pred
 
 
 def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, Any]:
@@ -112,15 +146,15 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     ret_model, ret_path = _resolve_model(ret, fallback)
     risk_model, risk_path = _resolve_model(risk, fallback)
 
-    # 3. Predict & Ensemble
-    pred_trend = trend_model.predict(df)
-    pred_return = ret_model.predict(df)
-    pred_risk = risk_model.predict(df)
+    # 3. Predict, Calibrate & Ensemble
+    pred_trend = _calibrate_prediction(trend_model.predict(df), trend_path)
+    pred_return = _calibrate_prediction(ret_model.predict(df), ret_path)
+    pred_risk = _calibrate_prediction(risk_model.predict(df), risk_path)
 
     pred_nbeats: PredictionOutput | None = None
     if nbeats is not None:
-        nbeats_model, _ = nbeats
-        pred_nbeats = nbeats_model.predict(df)
+        nbeats_model, nbeats_path = nbeats
+        pred_nbeats = _calibrate_prediction(nbeats_model.predict(df), nbeats_path)
 
     weights = EnsembleWeights(
         trend=0.30, ret=0.25, risk=0.25, nbeats=0.20
@@ -137,8 +171,12 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         regime_engine.load(regime_path)
         regime_str = regime_engine.predict(df)
     else:
-        logger.warning("regime_model_missing_using_unknown", path=str(regime_path))
-        regime_str = "UNKNOWN"
+        regime_str = "RANGE_SIDEWAYS"
+        logger.warning(
+            "regime_model_missing_using_safe_fallback",
+            path=str(regime_path),
+            fallback=regime_str,
+        )
 
     # 5. Meta-model Filter
     meta_model = MetaModel()
@@ -164,7 +202,7 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
 
     engine = DecisionEngine()
     price = float(df["close"].iloc[-1])
-    signal = engine.decide(merged, current_price=price)
+    signal = engine.decide(merged, current_price=price, regime=regime_str)
 
     # Multi-layered blocking logic
     flags = default_flags_store(settings).load()
@@ -175,8 +213,13 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
 
     decision = _to_contract_decision(signal.action, blocked=blocked)
     confidence = getattr(merged, "confidence", signal.confidence) if not blocked else 0.0
-    
+
     reason = signal.reason if not blocked else f"Blocked: risk={risk_decision.reason}, meta={meta_blocked}"
+
+    # Record last trade timestamp for cooldown
+    if not blocked and decision != "NO_TRADE":
+        state.last_trade_ts = datetime.now(tz=UTC).isoformat()
+        risk_state_store.save(state)
 
     payload: dict[str, Any] = {
         "ts": datetime.now(tz=UTC).isoformat(),

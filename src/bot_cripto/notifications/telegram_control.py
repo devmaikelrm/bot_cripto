@@ -23,7 +23,7 @@ from typing import Any
 
 from bot_cripto.core.config import Settings, get_settings
 from bot_cripto.core.logging import get_logger
-from bot_cripto.ops.operator_flags import OperatorFlags, default_flags_store
+from bot_cripto.ops.operator_flags import default_flags_store
 
 logger = get_logger("notifications.telegram_control")
 
@@ -50,6 +50,14 @@ def _tail_file(path: Path, n: int = 50) -> str:
         return "\n".join(lines) if lines else "(empty)"
     except OSError as exc:
         return f"error reading {path.name}: {exc}"
+
+
+def _run_output(argv: list[str]) -> str:
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, check=False)
+    except OSError:
+        return ""
+    return proc.stdout or ""
 
 
 @dataclass(frozen=True)
@@ -161,7 +169,8 @@ class TelegramControlBot:
                         text=text,
                     )
                 )
-            except Exception:
+            except Exception as exc:
+                logger.warning("telegram_control_bad_update_skipped", error=str(exc))
                 continue
         return out
 
@@ -382,65 +391,62 @@ class TelegramControlBot:
 
     def _cmd_training(self) -> str:
         try:
-            # 1. Get Process Stats
-            ps = subprocess.run(
-                ["ps", "-u", "maikelrm95", "-o", "pid,pcpu,pmem,etime,cmd", "--sort=-pcpu"],
-                capture_output=True, text=True, check=False
+            if not sys.platform.startswith("linux"):
+                return "Training dashboard is available only on Linux hosts."
+
+            # 1. Get process stats without hardcoded usernames
+            ps_output = _run_output(["ps", "-eo", "pid,pcpu,pmem,etime,args", "--sort=-pcpu"])
+            lines = ps_output.splitlines()
+            train_proc = next(
+                (l for l in lines if "bot_cripto.cli" in l and ("train-" in l or " train " in l)),
+                None,
             )
-            lines = ps.stdout.splitlines()
-            train_proc = next((l for l in lines if ".venv/bin/python" in l and "train-" in l), None)
-            
-            # 2. Get RAM and Disk
-            free = subprocess.run(["free", "-h"], capture_output=True, text=True).stdout.splitlines()
+
+            # 2. Get RAM and disk metrics
+            free = _run_output(["free", "-h"]).splitlines()
             ram_line = free[1].split() if len(free) > 1 else []
             ram_usage = f"{ram_line[2]} / {ram_line[1]}" if len(ram_line) > 2 else "N/A"
 
-            state_dir = Path("/home/maikelrm95/bot-cripto-state")
-            du = subprocess.run(["du", "-sh", str(state_dir)], capture_output=True, text=True).stdout.split()
+            du = _run_output(["du", "-sh", str(self.settings.logs_dir)]).split()
             disk_info = du[0] if du else "N/A"
 
             if not train_proc:
                 return "😴 *Sistema en Reposo*\nNo hay entrenamientos activos."
 
-            # Parse Worker Metrics
+            # Parse worker metrics
             parts = train_proc.strip().split(None, 4)
             pid, cpu, mem, elapsed = parts[0], parts[1], parts[2], parts[3]
 
-            # 3. Parse Progress
+            # 3. Parse progress
             log_path = self.settings.logs_dir / "retrain_institutional_v2.log"
             progress_info = "Esperando primera epoca..."
             if log_path.exists():
-                log_tail = subprocess.run(["tail", "-n", "50", str(log_path)], capture_output=True, text=True).stdout
+                log_tail = _run_output(["tail", "-n", "50", str(log_path)])
                 epochs = re.findall(r"Epoch\s+(\d+)", log_tail)
                 if epochs:
                     progress_info = f"Entrenando Epoca {epochs[-1]}"
                 elif "iniciando_entrenamiento_tft" in log_tail:
                     progress_info = "Cargando Red Neuronal..."
 
-            # 4. Build Clean List
-            return "\n".join([
-                "🚀 *Estado de Entrenamiento TFT*",
-                "-------------------------",
-                f"✅ *Proceso:* Activo (PID {pid})",
-                f"💻 *CPU:* {cpu}%",
-                f"🧠 *RAM:* {mem}% ({ram_usage})",
-                f"💾 *Disco:* {disk_info}",
-                f"⏱️ *Tiempo:* {elapsed}",
-                f"📊 *Progreso:* {progress_info}",
-                "-------------------------",
-                "_Nota: Entrenamiento desde 2017 (12-24h en CPU)._"
-            ])
-
-        except Exception as exc:
-            return f"❌ Error: {exc}"
-
-        except Exception as exc:
-            logger.error("training_cmd_error", error=str(exc))
-            return f"❌ *Error en Dashboard*: {exc}"
+            # 4. Build summary
+            return "\n".join(
+                [
+                    "🚀 *Estado de Entrenamiento TFT*",
+                    "-------------------------",
+                    f"✅ *Proceso:* Activo (PID {pid})",
+                    f"💻 *CPU:* {cpu}%",
+                    f"🧠 *RAM:* {mem}% ({ram_usage})",
+                    f"💾 *Disco (logs):* {disk_info}",
+                    f"⏱️ *Tiempo:* {elapsed}",
+                    f"📊 *Progreso:* {progress_info}",
+                    "-------------------------",
+                    "_Nota: Entrenamiento desde 2017 (12-24h en CPU)._",
+                ]
+            )
 
         except Exception as exc:
             logger.error("training_cmd_error", error=str(exc))
-            return f"❌ Error en Dashboard: {exc}"
+            return f"Error en dashboard: {exc}"
 
     def _cmd_backtest(self, symbol: str, folds: int) -> str:
         if not _SYMBOL_RE.match(symbol):
@@ -582,3 +588,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

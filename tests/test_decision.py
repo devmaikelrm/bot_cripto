@@ -42,7 +42,7 @@ class TestDecisionEngine:
 
         assert signal.action == Action.BUY
         assert signal.confidence == 0.7
-        assert "BUY SIGNAL" in signal.reason
+        assert "BUY" in signal.reason
 
     def test_hold_low_prob(self, mock_settings):
         """Genera HOLD si probabilidad es baja."""
@@ -87,14 +87,14 @@ class TestDecisionEngine:
         engine = DecisionEngine()
         engine.settings = mock_settings
 
-        # Prob up muy bajo = Prob down alta
+        # Prob up muy bajo = Prob down alta, negative percentiles for EU
         pred = PredictionOutput(
             prob_up=0.2,  # Prob down 0.8 > 0.6
             expected_return=-0.01,
             risk_score=0.5,
-            p10=0.0,
-            p50=0.0,
-            p90=0.0,
+            p10=-0.02,
+            p50=-0.01,
+            p90=-0.005,
         )
 
         signal = engine.decide(pred)

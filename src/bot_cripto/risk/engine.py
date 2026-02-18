@@ -20,6 +20,7 @@ class RiskLimits:
     max_position_size: float = 1.0
     risk_score_block_threshold: float = 0.9
     position_size_multiplier: float = 10.0
+    cooldown_minutes: int = 15
 
 
 @dataclass
@@ -29,6 +30,7 @@ class RiskState:
     week_start_equity: float = 10_000.0
     day_id: str = ""
     week_id: str = ""
+    last_trade_ts: str = ""
 
 
 @dataclass(frozen=True)
@@ -76,6 +78,20 @@ class RiskEngine:
             return RiskDecision(False, 0.0, f"Daily DD limit reached: {daily_dd:.2%}")
         if weekly_dd >= self.limits.max_weekly_drawdown:
             return RiskDecision(False, 0.0, f"Weekly DD limit reached: {weekly_dd:.2%}")
+
+        # Cooldown: block trades too soon after the last one
+        if state.last_trade_ts and self.limits.cooldown_minutes > 0:
+            try:
+                last = datetime.fromisoformat(state.last_trade_ts)
+                elapsed = (datetime.now(tz=UTC) - last).total_seconds() / 60.0
+                if elapsed < self.limits.cooldown_minutes:
+                    remaining = self.limits.cooldown_minutes - elapsed
+                    return RiskDecision(
+                        False, 0.0,
+                        f"Cooldown active: {remaining:.0f}min remaining",
+                    )
+            except (ValueError, TypeError):
+                pass  # corrupt timestamp — ignore, allow trade
         
         # Dynamic Multipliers based on ML Regime
         regime_multipliers = {

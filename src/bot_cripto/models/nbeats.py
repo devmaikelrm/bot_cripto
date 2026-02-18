@@ -20,6 +20,16 @@ import joblib
 import numpy as np
 import pandas as pd
 import torch
+
+# MONKEYPATCH: PyTorch 2.6+ force weights_only=False to allow complex objects in checkpoints
+import torch.serialization
+original_load = torch.load
+def patched_load(*args, **kwargs):
+    if "weights_only" in kwargs:
+        kwargs["weights_only"] = False
+    return original_load(*args, **kwargs)
+torch.load = patched_load
+
 from lightning import pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping
 from pytorch_forecasting import NBeats, TimeSeriesDataSet

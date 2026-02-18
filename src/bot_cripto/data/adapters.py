@@ -5,8 +5,55 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Protocol
 
-import ccxt
 import pandas as pd
+
+try:
+    import ccxt  # type: ignore[import-not-found]
+
+    _CCXT_IMPORT_ERROR: Exception | None = None
+except Exception as exc:  # pragma: no cover - depends on host interpreter/deps
+    ccxt = None  # type: ignore[assignment]
+    _CCXT_IMPORT_ERROR = exc
+
+
+def _parse_timeframe_seconds(timeframe: str) -> int:
+    if timeframe.endswith("m"):
+        return int(timeframe[:-1]) * 60
+    if timeframe.endswith("h"):
+        return int(timeframe[:-1]) * 3600
+    if timeframe.endswith("d"):
+        return int(timeframe[:-1]) * 86400
+    raise ValueError(f"Invalid timeframe: {timeframe}")
+
+
+class _UnavailableCCXTClient:
+    def __init__(self, exchange_id: str, error: Exception | None) -> None:
+        self.exchange_id = exchange_id
+        self._error = error
+        self.rateLimit = 1000
+
+    def parse_timeframe(self, timeframe: str) -> int:
+        return _parse_timeframe_seconds(timeframe)
+
+    def fetch_ohlcv(
+        self, symbol: str, timeframe: str, since: int, limit: int
+    ) -> list[list[float]]:
+        message = (
+            f"ccxt unavailable for adapter '{self.exchange_id}'. "
+            f"Cannot fetch OHLCV for {symbol} {timeframe}."
+        )
+        if self._error is not None:
+            raise RuntimeError(f"{message} Import error: {self._error}") from self._error
+        raise RuntimeError(message)
+
+
+def _build_ccxt_client(exchange_id: str, options: dict[str, object]) -> object:
+    if ccxt is None:
+        return _UnavailableCCXTClient(exchange_id, _CCXT_IMPORT_ERROR)
+    factory = getattr(ccxt, exchange_id, None)
+    if factory is None:
+        return _UnavailableCCXTClient(exchange_id, RuntimeError("exchange factory not found"))
+    return factory(options)
 
 
 class ExchangeAdapter(Protocol):
@@ -29,7 +76,9 @@ class BinanceAdapter:
     name = "binance"
 
     def __init__(self) -> None:
-        self.client = ccxt.binance({"enableRateLimit": True, "options": {"defaultType": "spot"}})
+        self.client = _build_ccxt_client(
+            "binance", {"enableRateLimit": True, "options": {"defaultType": "spot"}}
+        )
         self.rate_limit_ms = int(self.client.rateLimit)
 
     def parse_timeframe(self, timeframe: str) -> int:
@@ -55,7 +104,7 @@ class CoinbaseAdapter:
     name = "coinbase"
 
     def __init__(self) -> None:
-        self.client = ccxt.coinbase({"enableRateLimit": True})
+        self.client = _build_ccxt_client("coinbase", {"enableRateLimit": True})
         self.rate_limit_ms = int(self.client.rateLimit)
 
     def parse_timeframe(self, timeframe: str) -> int:
@@ -75,7 +124,7 @@ class KrakenAdapter:
     name = "kraken"
 
     def __init__(self) -> None:
-        self.client = ccxt.kraken({"enableRateLimit": True})
+        self.client = _build_ccxt_client("kraken", {"enableRateLimit": True})
         self.rate_limit_ms = int(self.client.rateLimit)
 
     def parse_timeframe(self, timeframe: str) -> int:
@@ -95,7 +144,7 @@ class OKXAdapter:
     name = "okx"
 
     def __init__(self) -> None:
-        self.client = ccxt.okx({"enableRateLimit": True})
+        self.client = _build_ccxt_client("okx", {"enableRateLimit": True})
         self.rate_limit_ms = int(self.client.rateLimit)
 
     def parse_timeframe(self, timeframe: str) -> int:
@@ -131,13 +180,7 @@ class YFinanceAdapter:
 
     @staticmethod
     def parse_timeframe(timeframe: str) -> int:
-        if timeframe.endswith("m"):
-            return int(timeframe[:-1]) * 60
-        if timeframe.endswith("h"):
-            return int(timeframe[:-1]) * 3600
-        if timeframe.endswith("d"):
-            return int(timeframe[:-1]) * 86400
-        raise ValueError(f"Invalid timeframe: {timeframe}")
+        return _parse_timeframe_seconds(timeframe)
 
     def fetch_ohlcv(
         self,

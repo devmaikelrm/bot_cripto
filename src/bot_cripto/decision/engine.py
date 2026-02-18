@@ -36,28 +36,49 @@ class TradeSignal(BaseModel):
 
 
 class DecisionEngine:
-    """Motor de decisiones basado en reglas y umbrales."""
+    """Motor de decisiones basado en reglas y umbrales adaptativos por régimen."""
+
+    # Regime-specific multipliers for decision thresholds.
+    # prob_mult > 1 means more conservative (harder to trigger BUY).
+    # return_mult > 1 means requires higher expected return.
+    # risk_mult < 1 means lower risk tolerance.
+    _REGIME_ADJUSTMENTS: dict[str, dict[str, float]] = {
+        "BULL_TREND":      {"prob_mult": 0.90, "return_mult": 0.80, "risk_mult": 1.10},
+        "BEAR_TREND":      {"prob_mult": 1.15, "return_mult": 1.30, "risk_mult": 0.80},
+        "RANGE_SIDEWAYS":  {"prob_mult": 1.10, "return_mult": 1.20, "risk_mult": 0.90},
+        "CRISIS_HIGH_VOL": {"prob_mult": 1.30, "return_mult": 1.50, "risk_mult": 0.60},
+        "UNKNOWN":         {"prob_mult": 1.00, "return_mult": 1.00, "risk_mult": 1.00},
+    }
 
     def __init__(self) -> None:
         """Inicializa con configuración global."""
         self.settings = get_settings()
 
     def decide(
-        self, prediction: PredictionOutput, current_price: float | None = None
+        self,
+        prediction: PredictionOutput,
+        current_price: float | None = None,
+        regime: str = "UNKNOWN",
     ) -> TradeSignal:
-        """Evalúa una predicción y emite una señal."""
+        """Evalúa una predicción y emite una señal.
 
-        # Umbrales
-        prob_thresh = self.settings.prob_min
-        min_return = self.settings.min_expected_return
-        max_risk = self.settings.risk_max
+        Thresholds are adapted based on the current market regime.
+        """
+
+        adj = self._REGIME_ADJUSTMENTS.get(
+            regime, self._REGIME_ADJUSTMENTS["UNKNOWN"]
+        )
+
+        # Umbrales adaptativos
+        prob_thresh = self.settings.prob_min * adj["prob_mult"]
+        min_return = self.settings.min_expected_return * adj["return_mult"]
+        max_risk = self.settings.risk_max * adj["risk_mult"]
 
         # Extracción
         prob_up = prediction.prob_up
         exp_ret = prediction.expected_return
         risk = prediction.risk_score
-
-        # Lógica de decisión fundamental (Long Only para Spot)
+        fees = self.settings.fees_decimal  # round-trip fees as decimal
 
         # 1. Filtro de Riesgo
         if risk > max_risk:
@@ -68,24 +89,20 @@ class DecisionEngine:
                 reason=f"Riesgo demasiado alto ({risk:.2f} > {max_risk})",
             )
 
-        # 2. Señal de COMPRA (BUY)
-        # Condiciones:
-        # - Probabilidad de subida > umbral
-        # - Retorno esperado > mínimo (cubrir fees + profit)
-        # - (Opcional) p10 > stop loss implícito? (p10 es retorno pesimista)
+        # 2. Expected Utility: EU = prob_up * upside + prob_down * downside - fees
+        upside = prediction.p90   # optimistic scenario return
+        downside = prediction.p10  # pessimistic scenario return
+        eu = prob_up * upside + (1.0 - prob_up) * downside - fees
 
-        if prob_up >= prob_thresh and exp_ret >= min_return:
-            # Sizing básico: escalar por confianza o riesgo
-            # Kelly simple o fijo. Usemos una heurística simple:
-            # Mayor prob -> mayor weight. Mayor riesgo -> menor weight.
-            # Weight base 1.0, ajustado.
-            weight = 1.0
-
+        # 3. BUY: positive EU, prob above threshold, return covers costs
+        if eu > min_return and prob_up >= prob_thresh and exp_ret >= min_return:
+            # Weight scaled by EU magnitude (capped at 1.0)
+            weight = min(1.0, eu / (min_return * 3.0)) if min_return > 0 else 1.0
             reason = (
-                f"BUY SIGNAL: Prob {prob_up:.1%} >= {prob_thresh:.1%}, "
-                f"Ret {exp_ret:.2%} >= {min_return:.1%}"
+                f"BUY: EU={eu:.4f} > {min_return:.4f}, "
+                f"Prob {prob_up:.1%} >= {prob_thresh:.1%}, "
+                f"Ret {exp_ret:.2%}"
             )
-
             return TradeSignal(
                 action=Action.BUY,
                 confidence=prob_up,
@@ -94,18 +111,12 @@ class DecisionEngine:
                 price_limit=current_price,
             )
 
-        # 3. Señal de VENTA (SELL)
-        # En spot, SELL significa salir de posición.
-        # Condiciones para vender:
-        # - Probabilidad de subida muy baja (o sea, prob bajada alta)
-        # - Retorno esperado negativo fuerte
-
-        # Umbral de venta: Si prob_up < (1 - prob_thresh) -> prob_down > prob_thresh
+        # 4. SELL: strongly negative EU
         prob_down = 1.0 - prob_up
-        if prob_down >= prob_thresh or exp_ret < -min_return:
+        if eu < -min_return and (prob_down >= prob_thresh or exp_ret < -min_return):
             reason = (
-                f"SELL SIGNAL: Prob Down {prob_down:.1%} >= {prob_thresh:.1%} "
-                f"OR Ret {exp_ret:.2%} < -{min_return:.1%}"
+                f"SELL: EU={eu:.4f} < -{min_return:.4f}, "
+                f"Prob Down {prob_down:.1%}"
             )
             return TradeSignal(
                 action=Action.SELL,
@@ -115,10 +126,10 @@ class DecisionEngine:
                 price_limit=current_price,
             )
 
-        # 4. NEUTRAL / HOLD
+        # 5. HOLD
         return TradeSignal(
             action=Action.HOLD,
             confidence=0.0,
             weight=0.0,
-            reason="Market noise (no signal)",
+            reason=f"EU={eu:.4f} insufficient (need > {min_return:.4f})",
         )

@@ -8,9 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 
-import ccxt  # noqa: F401
 import pandas as pd
-from ccxt.base.errors import NetworkError, RateLimitExceeded, RequestTimeout
 from filelock import FileLock
 
 from bot_cripto.core.config import Settings
@@ -19,6 +17,14 @@ from bot_cripto.data.adapters import ExchangeAdapter, build_adapter
 from bot_cripto.monitoring.watchtower_store import WatchtowerStore
 
 logger = get_logger("data.ingestion")
+
+
+def _is_retryable_network_error(exc: Exception) -> bool:
+    return exc.__class__.__name__ in {"NetworkError", "RequestTimeout"}
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    return exc.__class__.__name__ == "RateLimitExceeded"
 
 
 class BinanceFetcher:
@@ -140,14 +146,15 @@ class BinanceFetcher:
                         path=str(self.data_dir / f"{symbol.replace('/', '_')}_{timeframe}.parquet"),
                     )
 
-            except (NetworkError, RequestTimeout) as exc:
-                log.error("ingestion_network_retry", error=str(exc))
-                time.sleep(5)
-            except RateLimitExceeded as exc:
-                log.error("ingestion_rate_limit", error=str(exc))
-                time.sleep(60)
             except Exception as exc:
-                log.error("ingestion_fatal", error=str(exc))
+                if _is_retryable_network_error(exc):
+                    log.error("ingestion_network_retry", error=str(exc))
+                    time.sleep(5)
+                    continue
+                if _is_rate_limit_error(exc):
+                    log.error("ingestion_rate_limit", error=str(exc))
+                    time.sleep(60)
+                    continue
                 self.watchtower.log_api_health(
                     ts=datetime.now(tz=UTC).isoformat(),
                     provider=self.adapter.name,
@@ -156,6 +163,7 @@ class BinanceFetcher:
                     latency_ms=(perf_counter() - started) * 1000,
                     ok=False,
                 )
+                log.error("ingestion_fatal", error=str(exc))
                 raise
 
         if not all_candles:
@@ -238,6 +246,41 @@ class BinanceFetcher:
             )
         else:
             log.info("validation_ok_no_gaps")
+
+    def save_microstructure_snapshot(
+        self, symbol: str, obi: float, whale_pressure: float, sentiment: float = 0.0
+    ) -> Path:
+        """Append a point-in-time microstructure snapshot to an accumulating parquet."""
+        safe_symbol = symbol.replace("/", "_")
+        path = self.data_dir / f"{safe_symbol}_micro_snapshots.parquet"
+
+        row = pd.DataFrame(
+            {"obi": [obi], "whale_pressure": [whale_pressure], "sentiment": [sentiment]},
+            index=[pd.Timestamp.now(tz="UTC")],
+        )
+        row.index.name = "date"
+
+        lock = FileLock(str(path) + ".lock")
+        with lock:
+            if path.exists():
+                try:
+                    existing = pd.read_parquet(path)
+                    row = pd.concat([existing, row]).sort_index()
+                except Exception:
+                    pass
+                # Retain only last 7 days
+                cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=7)
+                row = row[row.index >= cutoff]
+            row.to_parquet(path)
+
+        logger.info(
+            "micro_snapshot_saved",
+            path=str(path),
+            rows=len(row),
+            obi=obi,
+            whale_pressure=whale_pressure,
+        )
+        return path
 
     def save_data(self, df: pd.DataFrame, symbol: str, timeframe: str) -> Path:
         safe_symbol = symbol.replace("/", "_")

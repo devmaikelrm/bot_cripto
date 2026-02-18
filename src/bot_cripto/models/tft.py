@@ -12,12 +12,42 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+
+# MONKEYPATCH: PyTorch 2.6+ force weights_only=False to allow complex objects in checkpoints
+import torch.serialization
+original_load = torch.load
+def patched_load(*args, **kwargs):
+    if "weights_only" in kwargs:
+        kwargs["weights_only"] = False
+    return original_load(*args, **kwargs)
+torch.load = patched_load
+
 from lightning import pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 from pytorch_forecasting.data import GroupNormalizer
 from pytorch_forecasting.metrics import QuantileLoss, MultiHorizonMetric
 from sklearn.preprocessing import RobustScaler
+
+# Add GroupNormalizer to safe globals for torch.load (PyTorch 2.6+ requirement)
+if hasattr(torch.serialization, "add_safe_globals"):
+    import sklearn.preprocessing
+    import pandas.core.internals.managers
+    import numpy as np
+    import pandas._libs.internals
+    torch.serialization.add_safe_globals([
+        GroupNormalizer, 
+        pd.DataFrame, 
+        pd.Series,
+        pd.Index,
+        sklearn.preprocessing.RobustScaler,
+        pandas.core.internals.managers.BlockManager,
+        pandas._libs.internals._unpickle_block,
+        np.core.multiarray._reconstruct,
+        np.ndarray,
+        np.dtype,
+        np.core.multiarray.scalar,
+    ])
 
 from bot_cripto.core.config import get_settings
 from bot_cripto.core.logging import get_logger
@@ -86,7 +116,7 @@ class TFTPredictor(BasePredictor):
         self.settings = settings
         self.horizon = settings.pred_horizon_steps
         self.encoder_length = 96
-        self.batch_size = 128
+        self.batch_size = 512
         self.max_epochs = 30 # Increased for better convergence
         self.learning_rate = 1e-3 # Slightly lower for stability with custom loss
         self.hidden_size = 256 # Upgrade from 64 to 256
@@ -95,15 +125,15 @@ class TFTPredictor(BasePredictor):
         self.hidden_continuous_size = 32 # Upgrade from 16
         self.lstm_layers = 3 # New parameter: Deeper network
         self.quantiles = [0.1, 0.5, 0.9]
-        self.num_workers = 2
+        self.num_workers = 4
 
         self.model: TemporalFusionTransformer | None = None
         self.dataset_params: dict[str, Any] = {}
         self.trainer_params: dict[str, Any] = {
             "accelerator": "auto",
             "devices": 1,
-            "enable_progress_bar": False,
-            "logger": False,
+            "enable_progress_bar": True,
+            "logger": True,
             "enable_checkpointing": True,
             "log_every_n_steps": 10,
             "gradient_clip_val": 0.1,
@@ -256,7 +286,16 @@ class TFTPredictor(BasePredictor):
             "brier_after": metrics.brier_after,
         }
 
-    def train(self, df: pd.DataFrame, target_col: str = "close") -> ModelMetadata:
+    def train_with_checkpoint(
+        self, df: pd.DataFrame, checkpoint_path: str, target_col: str = "close"
+    ) -> ModelMetadata:
+        """Resume training from a checkpoint."""
+        return self.train(df, target_col=target_col, resume_from=checkpoint_path)
+
+    def train(
+        self, df: pd.DataFrame, target_col: str = "close", resume_from: str | None = None
+    ) -> ModelMetadata:
+        torch.set_num_threads(6)
         log = logger.bind(rows=len(df))
         log.info("iniciando_entrenamiento_tft_mejorado")
 
@@ -388,7 +427,12 @@ class TFTPredictor(BasePredictor):
             log_interval=10,
             reduce_on_plateau_patience=4,
         )
-        trainer.fit(self.model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+        trainer.fit(
+            self.model, 
+            train_dataloaders=train_loader, 
+            val_dataloaders=val_loader,
+            ckpt_path=resume_from
+        )
 
         val_loss = float(trainer.callback_metrics.get("val_loss", torch.tensor(0.0)).item())
         calibration_metrics = self._fit_probability_calibrator(df, start_idx=calibration_start_idx)

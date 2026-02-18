@@ -48,12 +48,29 @@ Modular crypto market prediction system for `BTC/USDT` (`5m`, horizon `5` candle
 
 ## Local quickstart
 
+Python soportado: `3.10`, `3.11`, `3.12` (el proyecto bloquea `3.13+`).
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 cp .env.example .env       # Windows: copy .env.example .env
 ```
+
+## Reproducible Clone on Another PC
+
+```bash
+git clone https://github.com/devmaikelrm/bot_cripto.git
+cd bot_cripto
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install --upgrade pip
+pip install -e ".[dev]"
+cp .env.example .env       # Windows: copy .env.example .env
+pytest -q
+```
+
+If `pytest` passes, the environment is ready for training/inference runs.
 
 Run pipeline:
 
