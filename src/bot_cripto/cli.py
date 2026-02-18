@@ -250,6 +250,7 @@ def train(
     model_type: str = typer.Option("baseline", help="Model type: baseline|tft"),
     timeframe: str | None = typer.Option(None, help="Timeframe like 5m, 15m, 1h (overrides TIMEFRAME)"),
     checkpoint: str | None = typer.Option(None, help="Path to checkpoint to resume training"),
+    start_date: str | None = typer.Option(None, help="Filter data from this date (e.g. 2024-01-01)"),
 ) -> None:
     from bot_cripto.jobs.common import write_model_metadata
     from bot_cripto.models.base import BasePredictor
@@ -269,6 +270,15 @@ def train(
         raise typer.Exit(code=1)
 
     df = pd.read_parquet(input_path)
+
+    if start_date:
+        try:
+            initial_rows = len(df)
+            df = df[df.index >= start_date]
+            typer.echo(f"Filtered data from {start_date}: {initial_rows} -> {len(df)} rows")
+        except Exception as e:
+            typer.echo(f"Error filtering by date: {e}")
+            raise typer.Exit(code=1)
 
     model: BasePredictor
     if model_type == "baseline":

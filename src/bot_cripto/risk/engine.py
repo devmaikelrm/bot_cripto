@@ -21,6 +21,8 @@ class RiskLimits:
     risk_score_block_threshold: float = 0.9
     position_size_multiplier: float = 10.0
     cooldown_minutes: int = 15
+    enable_kelly: bool = True
+    kelly_fraction: float = 0.2  # Fractional Kelly (safer)
 
 
 @dataclass
@@ -62,6 +64,22 @@ class RiskEngine:
         if start <= 0:
             return 0.0
         return max(0.0, (start - current) / start)
+
+    def _calculate_kelly_size(self, win_prob: float, win_loss_ratio: float = 1.5) -> float:
+        """
+        Kelly Criterion formula: f* = (p*b - q) / b
+        p = probability of win
+        q = probability of loss (1-p)
+        b = win/loss ratio (payout)
+        """
+        if win_loss_ratio <= 0:
+            return 0.0
+        p = win_prob
+        q = 1.0 - p
+        b = win_loss_ratio
+        
+        kelly_f = (p * b - q) / b
+        return max(0.0, kelly_f)
 
     def evaluate(
         self,
@@ -109,21 +127,28 @@ class RiskEngine:
         if prediction.risk_score >= self.limits.risk_score_block_threshold:
             return RiskDecision(False, 0.0, "Prediction risk_score too high")
 
-        # Dynamic sizing: use TFT confidence if it was enhanced with trajectory consistency
-        # Otherwise fallback to standard prob-based component
-        conf = getattr(prediction, "confidence", max(0.0, prediction.prob_up - 0.5) * 2.0)
+        # Dynamic sizing: use Kelly if enabled
+        if self.limits.enable_kelly:
+            # win_prob based on prob_up. If it's a Long, prob_up is the win prob.
+            # If we were doing Shorts, it would be 1 - prob_up.
+            # Assuming Long-only strategy for now.
+            win_prob = prediction.prob_up
+            k_size = self._calculate_kelly_size(win_prob)
+            raw = k_size * self.limits.kelly_fraction * multiplier
+        else:
+            conf = getattr(prediction, "confidence", max(0.0, prediction.prob_up - 0.5) * 2.0)
+            raw = (
+                self.limits.risk_per_trade
+                * conf
+                * multiplier
+                * self.limits.position_size_multiplier
+            )
         
-        raw = (
-            self.limits.risk_per_trade
-            * conf
-            * multiplier
-            * self.limits.position_size_multiplier
-        )
         size = min(max(raw, 0.0), self.limits.max_position_size)
 
         reason = (
             f"Risk OK: {regime_str} (mult={multiplier}), "
-            f"daily_dd={daily_dd:.2%}, size={size:.4f}"
+            f"daily_dd={daily_dd:.2%}, size={size:.4f} (Kelly={self.limits.enable_kelly})"
         )
         logger.info("risk_decision", allowed=True, position_size=size, reason=reason)
         return RiskDecision(True, size, reason)

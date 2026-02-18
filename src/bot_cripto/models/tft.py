@@ -115,14 +115,14 @@ class TFTPredictor(BasePredictor):
         settings = get_settings()
         self.settings = settings
         self.horizon = settings.pred_horizon_steps
-        self.encoder_length = 96
-        self.batch_size = 512
+        self.encoder_length = 120
+        self.batch_size = 256
         self.max_epochs = 30 # Increased for better convergence
         self.learning_rate = 1e-3 # Slightly lower for stability with custom loss
-        self.hidden_size = 256 # Upgrade from 64 to 256
-        self.attention_head_size = 8 # Upgrade from 4 to 8
+        self.hidden_size = 128
+        self.attention_head_size = 8
         self.dropout = 0.2 # Increased dropout for regularization
-        self.hidden_continuous_size = 32 # Upgrade from 16
+        self.hidden_continuous_size = 64
         self.lstm_layers = 3 # New parameter: Deeper network
         self.quantiles = [0.1, 0.5, 0.9]
         self.num_workers = 4
@@ -130,8 +130,9 @@ class TFTPredictor(BasePredictor):
         self.model: TemporalFusionTransformer | None = None
         self.dataset_params: dict[str, Any] = {}
         self.trainer_params: dict[str, Any] = {
-            "accelerator": "auto",
+            "accelerator": "gpu",
             "devices": 1,
+            "precision": "16-mixed",
             "enable_progress_bar": True,
             "logger": True,
             "enable_checkpointing": True,
