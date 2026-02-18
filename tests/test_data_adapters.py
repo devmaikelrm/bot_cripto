@@ -7,5 +7,6 @@ def test_build_adapter_binance() -> None:
 
 
 def test_yfinance_symbol_mapping_and_timeframe() -> None:
+    assert YFinanceAdapter._to_yf_symbol("BTC/USD") == "BTC-USD"
     assert YFinanceAdapter._to_yf_symbol("EUR/USD") == "EURUSD=X"
     assert YFinanceAdapter.parse_timeframe("5m") == 300

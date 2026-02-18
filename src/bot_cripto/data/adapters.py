@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 import pandas as pd
@@ -163,11 +163,28 @@ class OKXAdapter:
 class YFinanceAdapter:
     name = "yfinance"
     rate_limit_ms = 1000
+    _FX_CODES = {
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY",
+        "CHF",
+        "AUD",
+        "NZD",
+        "CAD",
+        "SEK",
+        "NOK",
+        "DKK",
+    }
 
     @staticmethod
     def _to_yf_symbol(symbol: str) -> str:
         if "/" in symbol:
             base, quote = symbol.split("/", maxsplit=1)
+            if base in YFinanceAdapter._FX_CODES and quote in YFinanceAdapter._FX_CODES:
+                return f"{base}{quote}=X"
+            if quote in {"USD", "USDT"}:
+                return f"{base}-USD"
             return f"{base}{quote}=X"
         return symbol
 
@@ -194,7 +211,14 @@ class YFinanceAdapter:
         interval = self._parse_interval(timeframe)
         step_seconds = self.parse_timeframe(timeframe)
         start = datetime.fromtimestamp(since / 1000, tz=UTC)
+        # Yahoo intraday data is limited to ~730 days and can reject boundary timestamps.
+        if interval != "1d":
+            max_lookback = datetime.now(tz=UTC) - timedelta(days=729)
+            if start < max_lookback:
+                start = max_lookback
         end = datetime.fromtimestamp((since / 1000) + limit * step_seconds, tz=UTC)
+        if end <= start:
+            return []
         ticker = self._to_yf_symbol(symbol)
         frame = yf.download(
             tickers=ticker,
