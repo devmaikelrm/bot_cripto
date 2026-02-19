@@ -72,3 +72,8 @@ docker-compose.override.yml
 # ──────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# Allow committed training backups from remote GPU runs
+!artifacts/
+!artifacts/runpod_backups/
+!artifacts/runpod_backups/**

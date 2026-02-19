@@ -1,0 +1,12 @@
+{
+  "model_type": "tft_pytorch_4090_optimized",
+  "version": "0.2.1",
+  "git_commit": "unknown",
+  "trained_at": "2026-02-18T23:33:00.758370+00:00",
+  "metrics": {
+    "val_loss": 5818.0068359375,
+    "calibration_samples": 33.0,
+    "brier_before": 0.3939716318851281,
+    "brier_after": 0.22222222222228283
+  }
+}

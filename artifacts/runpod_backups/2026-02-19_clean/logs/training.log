@@ -1,0 +1,311 @@
+2026-02-18 23:21:32 [info     ] iniciando_entrenamiento_tft_mejorado_4090 rows=17469
+Using bfloat16 Automatic Mixed Precision (AMP)
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+/usr/local/lib/python3.11/dist-packages/lightning/pytorch/trainer/connectors/logger_connector/logger_connector.py:76: Starting from v1.9.0, `tensorboardX` has been removed as a dependency of the `lightning.pytorch` package, due to potential conflicts with other packages in the ML ecosystem. For this reason, `logger=True` will use `CSVLogger` as the default logger, unless the `tensorboard` or `tensorboardX` packages are found. Please `pip install lightning[extra]` or one of them to enable TensorBoard support by default
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+/usr/local/lib/python3.11/dist-packages/lightning/pytorch/utilities/model_summary/model_summary.py:242: Precision bf16-mixed is not supported by the model summary.  Estimated model size in MB will not be accurate. Using 32 bits instead.
+┏━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+┃    ┃ Name                               ┃ Type      ┃ Params ┃ Mode  ┃ FLOPs ┃
+┡━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+│ 0  │ loss                               │ Quantile… │      0 │ train │     0 │
+│ 1  │ logging_metrics                    │ ModuleLi… │      0 │ train │     0 │
+│ 2  │ input_embeddings                   │ MultiEmb… │      0 │ train │     0 │
+│ 3  │ prescalers                         │ ModuleDi… │  4.1 K │ train │     0 │
+│ 4  │ static_variable_selection          │ Variable… │ 90.8 K │ train │     0 │
+│ 5  │ encoder_variable_selection         │ Variable… │  932 K │ train │     0 │
+│ 6  │ decoder_variable_selection         │ Variable… │ 91.3 K │ train │     0 │
+│ 7  │ static_context_variable_selection  │ GatedRes… │  103 K │ train │     0 │
+│ 8  │ static_context_initial_hidden_lstm │ GatedRes… │  103 K │ train │     0 │
+│ 9  │ static_context_initial_cell_lstm   │ GatedRes… │  103 K │ train │     0 │
+│ 10 │ static_context_enrichment          │ GatedRes… │  103 K │ train │     0 │
+│ 11 │ lstm_encoder                       │ LSTM      │  824 K │ train │     0 │
+│ 12 │ lstm_decoder                       │ LSTM      │  824 K │ train │     0 │
+│ 13 │ post_lstm_gate_encoder             │ GatedLin… │ 51.5 K │ train │     0 │
+│ 14 │ post_lstm_add_norm_encoder         │ AddNorm   │    320 │ train │     0 │
+│ 15 │ static_enrichment                  │ GatedRes… │  128 K │ train │     0 │
+│ 16 │ multihead_attn                     │ Interpre… │ 57.9 K │ train │     0 │
+│ 17 │ post_attn_gate_norm                │ GateAddN… │ 51.8 K │ train │     0 │
+│ 18 │ pos_wise_ff                        │ GatedRes… │  103 K │ train │     0 │
+│ 19 │ pre_output_gate_norm               │ GateAddN… │ 51.8 K │ train │     0 │
+│ 20 │ output_layer                       │ Linear    │    483 │ train │     0 │
+└────┴────────────────────────────────────┴───────────┴────────┴───────┴───────┘
+Trainable params: 3.6 M                                                         
+Non-trainable params: 0                                                         
+Total params: 3.6 M                                                             
+Total estimated model params size (MB): 14                                      
+Modules in train mode: 691                                                      
+Modules in eval mode: 0                                                         
+Total FLOPs: 0                                                                  
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Sanity Checking DataLoader 0: 100%|██████████| 1/1 [00:00<00:00,  1.69it/s]                                                                           Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/13 [00:00<?, ?it/s]Epoch 0:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s]Epoch 0:  38%|███▊      | 5/13 [00:12<00:20,  0.40it/s, v_num=1, train_loss_step=7.14e+3]Epoch 0:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=7.14e+3]Epoch 0:  77%|███████▋  | 10/13 [00:24<00:07,  0.40it/s, v_num=1, train_loss_step=3.8e+3] Epoch 0: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=3.8e+3]Epoch 0: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=3.18e+3]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.16it/s][A
+                                                                      [AEpoch 0: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=3.18e+3, val_loss=1.62e+4]Epoch 0: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=3.18e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]Epoch 0:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=3.18e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]         Epoch 1:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=3.18e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]Epoch 1:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=3.18e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]Epoch 1:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=2.63e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]Epoch 1:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=2.63e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]Epoch 1:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=1.98e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]Epoch 1: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=1.98e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]Epoch 1: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.87e+3, val_loss=1.62e+4, train_loss_epoch=7.73e+3]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.27it/s][A
+                                                                      [AEpoch 1: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.87e+3, val_loss=1.72e+4, train_loss_epoch=7.73e+3]Epoch 1: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.87e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]Epoch 1:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.87e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]         Epoch 2:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.87e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]Epoch 2:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=1.87e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]Epoch 2:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=1.71e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]Epoch 2:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=1.71e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]Epoch 2:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=1.41e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]Epoch 2: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=1.41e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3]Epoch 2: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.3e+3, val_loss=1.72e+4, train_loss_epoch=2.38e+3] 
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 20.63it/s][A
+                                                                      [AEpoch 2: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.3e+3, val_loss=1.47e+4, train_loss_epoch=2.38e+3]Epoch 2: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.3e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]Epoch 2:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.3e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]         Epoch 3:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.3e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]Epoch 3:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=1.3e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]Epoch 3:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=1.22e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]Epoch 3:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=1.22e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]Epoch 3:  77%|███████▋  | 10/13 [00:24<00:07,  0.40it/s, v_num=1, train_loss_step=1.28e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]Epoch 3: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=1.28e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]Epoch 3: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.27e+3, val_loss=1.47e+4, train_loss_epoch=1.56e+3]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.48it/s][A
+                                                                      [AEpoch 3: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.27e+3, val_loss=1.16e+4, train_loss_epoch=1.56e+3]Epoch 3: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.27e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3]Epoch 3:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.27e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3]         Epoch 4:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.27e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3]Epoch 4:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=1.27e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3]Epoch 4:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=1.6e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3] Epoch 4:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=1.6e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3]Epoch 4:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=1.22e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3]Epoch 4: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=1.22e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3]Epoch 4: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.1e+3, val_loss=1.16e+4, train_loss_epoch=1.35e+3] 
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 22.06it/s][A
+                                                                      [AEpoch 4: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.1e+3, val_loss=1.06e+4, train_loss_epoch=1.35e+3]Epoch 4: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.1e+3, val_loss=1.06e+4, train_loss_epoch=1.28e+3]Epoch 4:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.1e+3, val_loss=1.06e+4, train_loss_epoch=1.28e+3]         Epoch 5:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.1e+3, val_loss=1.06e+4, train_loss_epoch=1.28e+3]Epoch 5:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=1.1e+3, val_loss=1.06e+4, train_loss_epoch=1.28e+3]Epoch 5:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=1.07e+3, val_loss=1.06e+4, train_loss_epoch=1.28e+3]Epoch 5:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=1.07e+3, val_loss=1.06e+4, train_loss_epoch=1.28e+3]Epoch 5:  77%|███████▋  | 10/13 [00:24<00:07,  0.40it/s, v_num=1, train_loss_step=999.0, val_loss=1.06e+4, train_loss_epoch=1.28e+3]  Epoch 5: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=999.0, val_loss=1.06e+4, train_loss_epoch=1.28e+3]Epoch 5: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.17e+3, val_loss=1.06e+4, train_loss_epoch=1.28e+3]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 22.35it/s][A
+                                                                      [AEpoch 5: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.17e+3, val_loss=9.27e+3, train_loss_epoch=1.28e+3]Epoch 5: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.17e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]Epoch 5:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.17e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]         Epoch 6:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.17e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]Epoch 6:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=1.17e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]Epoch 6:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=1.33e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]Epoch 6:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=1.33e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]Epoch 6:  77%|███████▋  | 10/13 [00:24<00:07,  0.40it/s, v_num=1, train_loss_step=1.23e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]Epoch 6: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=1.23e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]Epoch 6: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.56e+3, val_loss=9.27e+3, train_loss_epoch=1.06e+3]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.61it/s][A
+                                                                      [AEpoch 6: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.56e+3, val_loss=1.13e+4, train_loss_epoch=1.06e+3]Epoch 6: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=1.56e+3, val_loss=1.13e+4, train_loss_epoch=1.25e+3]Epoch 6:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.56e+3, val_loss=1.13e+4, train_loss_epoch=1.25e+3]         Epoch 7:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=1.56e+3, val_loss=1.13e+4, train_loss_epoch=1.25e+3]Epoch 7:  38%|███▊      | 5/13 [00:12<00:19,  0.40it/s, v_num=1, train_loss_step=1.56e+3, val_loss=1.13e+4, train_loss_epoch=1.25e+3]Epoch 7:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=1.24e+3, val_loss=1.13e+4, train_loss_epoch=1.25e+3]Epoch 7:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=1.24e+3, val_loss=1.13e+4, train_loss_epoch=1.25e+3]Epoch 7:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=994.0, val_loss=1.13e+4, train_loss_epoch=1.25e+3]  Epoch 7: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=994.0, val_loss=1.13e+4, train_loss_epoch=1.25e+3]Epoch 7: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=963.0, val_loss=1.13e+4, train_loss_epoch=1.25e+3]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.87it/s][A
+                                                                      [AEpoch 7: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=963.0, val_loss=7.59e+3, train_loss_epoch=1.25e+3]Epoch 7: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=963.0, val_loss=7.59e+3, train_loss_epoch=1.07e+3]Epoch 7:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=963.0, val_loss=7.59e+3, train_loss_epoch=1.07e+3]         Epoch 8:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=963.0, val_loss=7.59e+3, train_loss_epoch=1.07e+3]Epoch 8:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=963.0, val_loss=7.59e+3, train_loss_epoch=1.07e+3]Epoch 8:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=1.1e+3, val_loss=7.59e+3, train_loss_epoch=1.07e+3]Epoch 8:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=1.1e+3, val_loss=7.59e+3, train_loss_epoch=1.07e+3]Epoch 8:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=993.0, val_loss=7.59e+3, train_loss_epoch=1.07e+3] Epoch 8: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=993.0, val_loss=7.59e+3, train_loss_epoch=1.07e+3]Epoch 8: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=839.0, val_loss=7.59e+3, train_loss_epoch=1.07e+3]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 22.18it/s][A
+                                                                      [AEpoch 8: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=839.0, val_loss=9.31e+3, train_loss_epoch=1.07e+3]Epoch 8: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=839.0, val_loss=9.31e+3, train_loss_epoch=955.0]  Epoch 8:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=839.0, val_loss=9.31e+3, train_loss_epoch=955.0]         Epoch 9:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=839.0, val_loss=9.31e+3, train_loss_epoch=955.0]Epoch 9:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=839.0, val_loss=9.31e+3, train_loss_epoch=955.0]Epoch 9:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=873.0, val_loss=9.31e+3, train_loss_epoch=955.0]Epoch 9:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=873.0, val_loss=9.31e+3, train_loss_epoch=955.0]Epoch 9:  77%|███████▋  | 10/13 [00:24<00:07,  0.40it/s, v_num=1, train_loss_step=780.0, val_loss=9.31e+3, train_loss_epoch=955.0]Epoch 9: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=780.0, val_loss=9.31e+3, train_loss_epoch=955.0]Epoch 9: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=788.0, val_loss=9.31e+3, train_loss_epoch=955.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.70it/s][A
+                                                                      [AEpoch 9: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=788.0, val_loss=5.58e+3, train_loss_epoch=955.0]Epoch 9: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=788.0, val_loss=5.58e+3, train_loss_epoch=848.0]Epoch 9:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=788.0, val_loss=5.58e+3, train_loss_epoch=848.0]         Epoch 10:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=788.0, val_loss=5.58e+3, train_loss_epoch=848.0]Epoch 10:  38%|███▊      | 5/13 [00:12<00:19,  0.40it/s, v_num=1, train_loss_step=788.0, val_loss=5.58e+3, train_loss_epoch=848.0]Epoch 10:  38%|███▊      | 5/13 [00:13<00:20,  0.38it/s, v_num=1, train_loss_step=863.0, val_loss=5.58e+3, train_loss_epoch=848.0]Epoch 10:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=863.0, val_loss=5.58e+3, train_loss_epoch=848.0]Epoch 10:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=725.0, val_loss=5.58e+3, train_loss_epoch=848.0]Epoch 10: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=725.0, val_loss=5.58e+3, train_loss_epoch=848.0]Epoch 10: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=720.0, val_loss=5.58e+3, train_loss_epoch=848.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 20.69it/s][A
+                                                                      [AEpoch 10: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=720.0, val_loss=7.4e+3, train_loss_epoch=848.0] Epoch 10: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=720.0, val_loss=7.4e+3, train_loss_epoch=792.0]Epoch 10:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=720.0, val_loss=7.4e+3, train_loss_epoch=792.0]         Epoch 11:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=720.0, val_loss=7.4e+3, train_loss_epoch=792.0]Epoch 11:  38%|███▊      | 5/13 [00:12<00:19,  0.40it/s, v_num=1, train_loss_step=720.0, val_loss=7.4e+3, train_loss_epoch=792.0]Epoch 11:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=718.0, val_loss=7.4e+3, train_loss_epoch=792.0]Epoch 11:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=718.0, val_loss=7.4e+3, train_loss_epoch=792.0]Epoch 11:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=772.0, val_loss=7.4e+3, train_loss_epoch=792.0]Epoch 11: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=772.0, val_loss=7.4e+3, train_loss_epoch=792.0]Epoch 11: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=765.0, val_loss=7.4e+3, train_loss_epoch=792.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.52it/s][A
+                                                                      [AEpoch 11: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=765.0, val_loss=6.66e+3, train_loss_epoch=792.0]Epoch 11: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=765.0, val_loss=6.66e+3, train_loss_epoch=746.0]Epoch 11:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=765.0, val_loss=6.66e+3, train_loss_epoch=746.0]         Epoch 12:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=765.0, val_loss=6.66e+3, train_loss_epoch=746.0]Epoch 12:  38%|███▊      | 5/13 [00:12<00:19,  0.40it/s, v_num=1, train_loss_step=765.0, val_loss=6.66e+3, train_loss_epoch=746.0]Epoch 12:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=650.0, val_loss=6.66e+3, train_loss_epoch=746.0]Epoch 12:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=650.0, val_loss=6.66e+3, train_loss_epoch=746.0]Epoch 12:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=697.0, val_loss=6.66e+3, train_loss_epoch=746.0]Epoch 12: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=697.0, val_loss=6.66e+3, train_loss_epoch=746.0]Epoch 12: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=929.0, val_loss=6.66e+3, train_loss_epoch=746.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.70it/s][A
+                                                                      [AEpoch 12: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=929.0, val_loss=5.87e+3, train_loss_epoch=746.0]Epoch 12: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=929.0, val_loss=5.87e+3, train_loss_epoch=755.0]Epoch 12:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=929.0, val_loss=5.87e+3, train_loss_epoch=755.0]         Epoch 13:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=929.0, val_loss=5.87e+3, train_loss_epoch=755.0]Epoch 13:  38%|███▊      | 5/13 [00:12<00:19,  0.40it/s, v_num=1, train_loss_step=929.0, val_loss=5.87e+3, train_loss_epoch=755.0]Epoch 13:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=829.0, val_loss=5.87e+3, train_loss_epoch=755.0]Epoch 13:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=829.0, val_loss=5.87e+3, train_loss_epoch=755.0]Epoch 13:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=803.0, val_loss=5.87e+3, train_loss_epoch=755.0]Epoch 13: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=803.0, val_loss=5.87e+3, train_loss_epoch=755.0]Epoch 13: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=671.0, val_loss=5.87e+3, train_loss_epoch=755.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 17.40it/s][A
+                                                                      [AEpoch 13: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=671.0, val_loss=6.63e+3, train_loss_epoch=755.0]Epoch 13: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=671.0, val_loss=6.63e+3, train_loss_epoch=759.0]Epoch 13:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=671.0, val_loss=6.63e+3, train_loss_epoch=759.0]         Epoch 14:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=671.0, val_loss=6.63e+3, train_loss_epoch=759.0]Epoch 14:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=671.0, val_loss=6.63e+3, train_loss_epoch=759.0]Epoch 14:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=876.0, val_loss=6.63e+3, train_loss_epoch=759.0]Epoch 14:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=876.0, val_loss=6.63e+3, train_loss_epoch=759.0]Epoch 14:  77%|███████▋  | 10/13 [00:24<00:07,  0.40it/s, v_num=1, train_loss_step=689.0, val_loss=6.63e+3, train_loss_epoch=759.0]Epoch 14: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=689.0, val_loss=6.63e+3, train_loss_epoch=759.0]Epoch 14: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=650.0, val_loss=6.63e+3, train_loss_epoch=759.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.86it/s][A
+                                                                      [AEpoch 14: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=650.0, val_loss=7.16e+3, train_loss_epoch=759.0]Epoch 14: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=650.0, val_loss=7.16e+3, train_loss_epoch=780.0]Epoch 14:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=650.0, val_loss=7.16e+3, train_loss_epoch=780.0]         Epoch 15:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=650.0, val_loss=7.16e+3, train_loss_epoch=780.0]Epoch 15:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=650.0, val_loss=7.16e+3, train_loss_epoch=780.0]Epoch 15:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=746.0, val_loss=7.16e+3, train_loss_epoch=780.0]Epoch 15:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=746.0, val_loss=7.16e+3, train_loss_epoch=780.0]Epoch 15:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=742.0, val_loss=7.16e+3, train_loss_epoch=780.0]Epoch 15: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=742.0, val_loss=7.16e+3, train_loss_epoch=780.0]Epoch 15: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=710.0, val_loss=7.16e+3, train_loss_epoch=780.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 22.10it/s][A
+                                                                      [AEpoch 15: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=710.0, val_loss=5.91e+3, train_loss_epoch=780.0]Epoch 15: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=710.0, val_loss=5.91e+3, train_loss_epoch=772.0]Epoch 15:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=710.0, val_loss=5.91e+3, train_loss_epoch=772.0]         Epoch 16:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=710.0, val_loss=5.91e+3, train_loss_epoch=772.0]Epoch 16:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=710.0, val_loss=5.91e+3, train_loss_epoch=772.0]Epoch 16:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=625.0, val_loss=5.91e+3, train_loss_epoch=772.0]Epoch 16:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=625.0, val_loss=5.91e+3, train_loss_epoch=772.0]Epoch 16:  77%|███████▋  | 10/13 [00:24<00:07,  0.40it/s, v_num=1, train_loss_step=551.0, val_loss=5.91e+3, train_loss_epoch=772.0]Epoch 16: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=551.0, val_loss=5.91e+3, train_loss_epoch=772.0]Epoch 16: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=560.0, val_loss=5.91e+3, train_loss_epoch=772.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.78it/s][A
+                                                                      [AEpoch 16: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=560.0, val_loss=6.58e+3, train_loss_epoch=772.0]Epoch 16: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=560.0, val_loss=6.58e+3, train_loss_epoch=614.0]Epoch 16:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=560.0, val_loss=6.58e+3, train_loss_epoch=614.0]         Epoch 17:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=560.0, val_loss=6.58e+3, train_loss_epoch=614.0]Epoch 17:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=560.0, val_loss=6.58e+3, train_loss_epoch=614.0]Epoch 17:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=557.0, val_loss=6.58e+3, train_loss_epoch=614.0]Epoch 17:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=557.0, val_loss=6.58e+3, train_loss_epoch=614.0]Epoch 17:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=549.0, val_loss=6.58e+3, train_loss_epoch=614.0]Epoch 17: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=549.0, val_loss=6.58e+3, train_loss_epoch=614.0]Epoch 17: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=537.0, val_loss=6.58e+3, train_loss_epoch=614.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.33it/s][A
+                                                                      [AEpoch 17: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=537.0, val_loss=6.6e+3, train_loss_epoch=614.0] Epoch 17: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=537.0, val_loss=6.6e+3, train_loss_epoch=572.0]Epoch 17:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=537.0, val_loss=6.6e+3, train_loss_epoch=572.0]         Epoch 18:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=537.0, val_loss=6.6e+3, train_loss_epoch=572.0]Epoch 18:  38%|███▊      | 5/13 [00:12<00:19,  0.40it/s, v_num=1, train_loss_step=537.0, val_loss=6.6e+3, train_loss_epoch=572.0]Epoch 18:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=566.0, val_loss=6.6e+3, train_loss_epoch=572.0]Epoch 18:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=566.0, val_loss=6.6e+3, train_loss_epoch=572.0]Epoch 18:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=556.0, val_loss=6.6e+3, train_loss_epoch=572.0]Epoch 18: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=556.0, val_loss=6.6e+3, train_loss_epoch=572.0]Epoch 18: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=546.0, val_loss=6.6e+3, train_loss_epoch=572.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.14it/s][A
+                                                                      [AEpoch 18: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=546.0, val_loss=6.26e+3, train_loss_epoch=572.0]Epoch 18: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=546.0, val_loss=6.26e+3, train_loss_epoch=561.0]Epoch 18:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=546.0, val_loss=6.26e+3, train_loss_epoch=561.0]         Epoch 19:   0%|          | 0/13 [00:00<?, ?it/s, v_num=1, train_loss_step=546.0, val_loss=6.26e+3, train_loss_epoch=561.0]Epoch 19:  38%|███▊      | 5/13 [00:12<00:19,  0.41it/s, v_num=1, train_loss_step=546.0, val_loss=6.26e+3, train_loss_epoch=561.0]Epoch 19:  38%|███▊      | 5/13 [00:12<00:20,  0.39it/s, v_num=1, train_loss_step=525.0, val_loss=6.26e+3, train_loss_epoch=561.0]Epoch 19:  77%|███████▋  | 10/13 [00:24<00:07,  0.41it/s, v_num=1, train_loss_step=525.0, val_loss=6.26e+3, train_loss_epoch=561.0]Epoch 19:  77%|███████▋  | 10/13 [00:25<00:07,  0.40it/s, v_num=1, train_loss_step=555.0, val_loss=6.26e+3, train_loss_epoch=561.0]Epoch 19: 100%|██████████| 13/13 [00:31<00:00,  0.41it/s, v_num=1, train_loss_step=555.0, val_loss=6.26e+3, train_loss_epoch=561.0]Epoch 19: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=546.0, val_loss=6.26e+3, train_loss_epoch=561.0]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.28it/s][A
+                                                                      [AEpoch 19: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=546.0, val_loss=5.82e+3, train_loss_epoch=561.0]Epoch 19: 100%|██████████| 13/13 [00:32<00:00,  0.40it/s, v_num=1, train_loss_step=546.0, val_loss=5.82e+3, train_loss_epoch=546.0]Epoch 19: 100%|██████████| 13/13 [00:33<00:00,  0.39it/s, v_num=1, train_loss_step=546.0, val_loss=5.82e+3, train_loss_epoch=546.0]GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+2026-02-18 23:33:00 [info     ] entrenamiento_completado       brier_after=0.22222222222228283 brier_before=0.3939716318851281 calibration_samples=33.0 rows=17469 val_loss=5818.0068359375
+2026-02-18 23:33:00 [info     ] modelo_tft_guardado            path=models/trend/BTC_USD/1h/20260218T233300Z_unknown
+2026-02-18 23:33:01 [info     ] train_trend_done               metrics={'val_loss': 5818.0068359375, 'calibration_samples': 33.0, 'brier_before': 0.3939716318851281, 'brier_after': 0.22222222222228283} output=models/trend/BTC_USD/1h/20260218T233300Z_unknown symbol=BTC/USD timeframe=1h
+models/trend/BTC_USD/1h/20260218T233300Z_unknown
