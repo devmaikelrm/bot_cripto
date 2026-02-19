@@ -49,40 +49,45 @@ Documento de referencia operacional y técnica del proyecto, con foco en entrena
 
 ## 5. Hoja de Ruta para Máxima Precisión
 
-Estado real al 2026-02-18 (implementación):
+Estado real al 2026-02-19 (implementación):
 
 1. Análisis de sentimiento en tiempo real
 - Estado: `PARCIAL`
 - Implementado:
-  - `fear_greed`
+  - pipeline NLP inicial (`finBERT`) con fallback seguro a léxico.
+  - enrutamiento `SOCIAL_SENTIMENT_SOURCE=auto` con prioridad `nlp`.
+  - `fear_greed`.
   - `social_sentiment` por fuente configurable:
     - endpoint externo (`SOCIAL_SENTIMENT_ENDPOINT`)
+    - X nativo (`X_BEARER_TOKEN`)
+    - Telegram nativo (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_SENTIMENT_CHAT_IDS`)
     - CryptoPanic (`CRYPTOPANIC_API_KEY`)
     - archivo local `data/raw/social_sentiment_<SYMBOL>.json`
     - fallback seguro a neutral/FnG
 - Pendiente:
-  - conectores nativos directos para Twitter/X y Telegram channels con pipeline propio.
+  - combinar fuentes con pesos dinámicos y suavizado temporal (EMA/velocity).
+  - conector de noticias adicionales para cobertura amplia.
 
 2. Orderbook Imbalance
 - Estado: `COMPLETADO`
 - Implementado:
-  - captura de profundidad de Binance
-  - feature `orderbook_imbalance` en inferencia
+  - captura de profundidad de Binance.
+  - feature `orderbook_imbalance` en inferencia.
   - gating de compra ante pared de venta configurable.
 
 3. Correlación con SP500 y DXY
 - Estado: `COMPLETADO`
 - Implementado:
-  - `sp500_ret_1d`, `dxy_ret_1d`
-  - `corr_btc_sp500`, `corr_btc_dxy`
-  - `macro_risk_off_score`
+  - `sp500_ret_1d`, `dxy_ret_1d`.
+  - `corr_btc_sp500`, `corr_btc_dxy`.
+  - `macro_risk_off_score`.
   - integración en inferencia y decisión.
 
 4. Fine-tuning de volatilidad (modo crisis)
 - Estado: `COMPLETADO`
 - Implementado:
-  - activación por volatilidad realizada
-  - activación por ventana macro horaria (UTC) configurable
+  - activación por volatilidad realizada.
+  - activación por ventana macro horaria (UTC) configurable.
   - `effective_regime = CRISIS_HIGH_VOL` cuando aplica.
 
 ## 6. Variables de Entorno de Precisión (nuevas)
@@ -98,6 +103,14 @@ Estado real al 2026-02-18 (implementación):
 - `SOCIAL_SENTIMENT_SOURCE`
 - `SOCIAL_SENTIMENT_ENDPOINT`
 - `CRYPTOPANIC_API_KEY`
+- `SOCIAL_SENTIMENT_NLP_ENABLED`
+- `SOCIAL_SENTIMENT_NLP_MODEL_ID`
+- `SOCIAL_SENTIMENT_NLP_MAX_TEXTS`
+- `X_BEARER_TOKEN`
+- `X_QUERY_TEMPLATE`
+- `X_MAX_RESULTS`
+- `TELEGRAM_SENTIMENT_CHAT_IDS`
+- `TELEGRAM_SENTIMENT_LOOKBACK_LIMIT`
 
 ## 7. Estado del Sistema
 
@@ -108,5 +121,5 @@ Estado real al 2026-02-18 (implementación):
 ## 8. Próximos pasos sugeridos
 
 1. Al levantar nueva GPU: deploy del repo actualizado y smoke de inferencia.
-2. Activar fuente real de sentimiento (endpoint propio o proveedor estable).
+2. Activar fuentes reales de sentimiento (X/Telegram/API).
 3. Validar impacto en backtesting walk-forward y drift para recalibrar umbrales.

@@ -22,9 +22,24 @@ class TelegramSentimentFetcher:
         self.settings = settings
 
     def fetch(self, symbol: str = "BTC/USDT") -> float | None:
+        texts = self.fetch_recent_texts(symbol=symbol)
+        if not texts:
+            return None
+        values: list[float] = []
+        for text in texts:
+            local = score_text(text)
+            if local is not None:
+                values.append(local)
+        if not values:
+            return None
+        score = float(mean(values))
+        logger.info("telegram_sentiment_captured", symbol=symbol, samples=len(values), score=score)
+        return score
+
+    def fetch_recent_texts(self, symbol: str = "BTC/USDT") -> list[str]:
         token = (self.settings.telegram_bot_token or "").strip()
         if not token:
-            return None
+            return []
 
         url = f"https://api.telegram.org/bot{token}/getUpdates"
         response = requests.get(
@@ -35,13 +50,13 @@ class TelegramSentimentFetcher:
         response.raise_for_status()
         payload = response.json()
         if not bool(payload.get("ok")):
-            return None
+            return []
 
         allowed = set(self.settings.telegram_sentiment_chat_ids_list)
         coin = symbol.split("/")[0].upper()
         keys = {coin, f"${coin}", f"#{coin}", symbol.upper()}
 
-        values: list[float] = []
+        texts: list[str] = []
         for item in payload.get("result", []):
             msg = item.get("message") or item.get("channel_post") or {}
             chat_id = str((msg.get("chat") or {}).get("id", ""))
@@ -54,13 +69,5 @@ class TelegramSentimentFetcher:
             upper = text.upper()
             if not any(k in upper for k in keys):
                 continue
-            local = score_text(text)
-            if local is not None:
-                values.append(local)
-
-        if not values:
-            return None
-
-        score = float(mean(values))
-        logger.info("telegram_sentiment_captured", symbol=symbol, samples=len(values), score=score)
-        return score
+            texts.append(text)
+        return texts

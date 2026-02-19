@@ -6,6 +6,7 @@ from bot_cripto.data.quant_signals import QuantSignalFetcher
 
 
 def test_social_sentiment_source_x_is_used(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
     settings = Settings(
         data_dir_raw=tmp_path / "raw",
         social_sentiment_source="x",
@@ -24,6 +25,7 @@ def test_social_sentiment_source_x_is_used(monkeypatch, tmp_path) -> None:
 
 
 def test_social_sentiment_auto_falls_back_to_local(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
     settings = Settings(
         data_dir_raw=tmp_path / "raw",
         social_sentiment_source="auto",
@@ -34,6 +36,7 @@ def test_social_sentiment_auto_falls_back_to_local(monkeypatch, tmp_path) -> Non
     settings.ensure_dirs()
     fetcher = QuantSignalFetcher(settings)
 
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_nlp", lambda symbol: None)
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_endpoint", lambda symbol: None)
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_x", lambda symbol: None)
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_telegram", lambda symbol: None)
@@ -45,6 +48,7 @@ def test_social_sentiment_auto_falls_back_to_local(monkeypatch, tmp_path) -> Non
 
 
 def test_social_sentiment_falls_back_to_fng(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
     settings = Settings(
         data_dir_raw=tmp_path / "raw",
         social_sentiment_source="api",
@@ -55,7 +59,20 @@ def test_social_sentiment_falls_back_to_fng(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_endpoint", lambda symbol: None)
     monkeypatch.setattr(fetcher, "fetch_fear_and_greed", lambda: 0.42)
-    qs._cache.clear()
-
     score = fetcher.fetch_social_sentiment("ETH/USDT")
     assert score == 0.42
+
+
+def test_social_sentiment_source_nlp_is_used(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="nlp",
+        social_sentiment_nlp_enabled=True,
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings)
+
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_nlp", lambda symbol: -0.2)
+    score = fetcher.fetch_social_sentiment("BTC/USDT")
+    assert score == 0.4

@@ -149,6 +149,30 @@ Tests:
 - `tests/test_inference_context.py` updated with macro-window checks.
 - `tests/test_config.py` updated for macro-window parsing.
 
+## 2026-02-19 Precision Roadmap Applied (phase 3 - sentiment foundation)
+
+Status: In Progress (phase 1 delivered)
+
+Implemented:
+- Native source adapters ready:
+  - `src/bot_cripto/data/sentiment_x.py`
+  - `src/bot_cripto/data/sentiment_telegram.py`
+- NLP scorer foundation:
+  - `src/bot_cripto/data/sentiment_nlp.py`
+  - lazy `transformers` load with fallback (no hard failure in inference)
+- Quant routing upgraded in `src/bot_cripto/data/quant_signals.py`:
+  - `SOCIAL_SENTIMENT_SOURCE` now supports `nlp`
+  - `auto` order: `nlp -> api -> x -> telegram -> cryptopanic -> local -> fear_greed`
+- Validation CLI:
+  - `bot-cripto fetch-sentiment-nlp --symbol BTC/USDT`
+
+Config/docs:
+- `.env.example`, `README.md`, `BOT_CRIPTO_MASTER_GUIDE.md`
+- new implementation document: `docs/SENTIMENT_STACK_IMPLEMENTATION.md`
+
+Tests:
+- `tests/test_quant_signals.py` extended to cover NLP source routing.
+
 ## Rollback Strategy
 
 If any change degrades behavior:

@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     social_sentiment_source: str = "auto"
     social_sentiment_endpoint: str = ""
     cryptopanic_api_key: str = ""
+    social_sentiment_nlp_enabled: bool = True
+    social_sentiment_nlp_model_id: str = "ProsusAI/finbert"
+    social_sentiment_nlp_max_texts: Annotated[int, Field(ge=5, le=500)] = 120
     x_bearer_token: str = ""
     x_query_template: str = "({coin} OR ${coin} OR #{coin}) lang:en -is:retweet"
     x_max_results: Annotated[int, Field(ge=10, le=100)] = 50

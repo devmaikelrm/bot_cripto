@@ -42,6 +42,9 @@ ui = [
     "streamlit>=1.37.0",
     "yfinance>=0.2.50",
 ]
+nlp = [
+    "transformers>=4.44.0",
+]
 
 [project.scripts]
 bot-cripto = "bot_cripto.cli:app"

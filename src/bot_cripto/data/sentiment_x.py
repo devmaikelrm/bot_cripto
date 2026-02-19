@@ -22,9 +22,24 @@ class XSentimentFetcher:
         self.settings = settings
 
     def fetch(self, symbol: str = "BTC/USDT") -> float | None:
+        texts = self.fetch_recent_texts(symbol=symbol)
+        if not texts:
+            return None
+        values: list[float] = []
+        for text in texts:
+            local = score_text(text)
+            if local is not None:
+                values.append(local)
+        if not values:
+            return None
+        score = float(mean(values))
+        logger.info("x_sentiment_captured", symbol=symbol, samples=len(values), score=score)
+        return score
+
+    def fetch_recent_texts(self, symbol: str = "BTC/USDT") -> list[str]:
         token = (self.settings.x_bearer_token or "").strip()
         if not token:
-            return None
+            return []
 
         coin = symbol.split("/")[0].upper()
         query = self.settings.x_query_template.format(symbol=symbol, coin=coin)
@@ -43,17 +58,10 @@ class XSentimentFetcher:
         payload = response.json()
         tweets = payload.get("data", [])
         if not tweets:
-            return None
-
-        values: list[float] = []
+            return []
+        out: list[str] = []
         for item in tweets:
-            text = str(item.get("text", ""))
-            local = score_text(text)
-            if local is not None:
-                values.append(local)
-        if not values:
-            return None
-
-        score = float(mean(values))
-        logger.info("x_sentiment_captured", symbol=symbol, samples=len(values), score=score)
-        return score
+            text = str(item.get("text", "")).strip()
+            if text:
+                out.append(text)
+        return out

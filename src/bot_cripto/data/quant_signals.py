@@ -13,6 +13,7 @@ from filelock import FileLock
 from bot_cripto.core.config import Settings
 from bot_cripto.core.logging import get_logger
 from bot_cripto.data.sentiment_lexicon import score_text
+from bot_cripto.data.sentiment_nlp import NLPSentimentScorer
 from bot_cripto.data.sentiment_telegram import TelegramSentimentFetcher
 from bot_cripto.data.sentiment_x import XSentimentFetcher
 
@@ -154,12 +155,13 @@ class QuantSignalFetcher:
         """Read social sentiment using configured source with safe fallbacks.
 
         Source order in `auto` mode:
-        1. `SOCIAL_SENTIMENT_ENDPOINT` (expects JSON with score)
-        2. X API (if `X_BEARER_TOKEN` is set)
-        3. Telegram Bot API updates (if `TELEGRAM_BOT_TOKEN` is set)
-        4. CryptoPanic API (if `CRYPTOPANIC_API_KEY` is set)
-        5. local file `data/raw/social_sentiment_<SYMBOL>.json`
-        6. neutral 0.5
+        1. NLP combined (X + Telegram text if available)
+        2. `SOCIAL_SENTIMENT_ENDPOINT` (expects JSON with score)
+        3. X API (if `X_BEARER_TOKEN` is set)
+        4. Telegram Bot API updates (if `TELEGRAM_BOT_TOKEN` is set)
+        5. CryptoPanic API (if `CRYPTOPANIC_API_KEY` is set)
+        6. local file `data/raw/social_sentiment_<SYMBOL>.json`
+        7. neutral 0.5
         """
         cache_key = f"social:{symbol}"
         cached = self._cache_get(cache_key)
@@ -169,15 +171,17 @@ class QuantSignalFetcher:
         source = (self.settings.social_sentiment_source or "auto").strip().lower()
         source_order = (
             [source]
-            if source in {"api", "x", "telegram", "cryptopanic", "local", "auto"}
+            if source in {"nlp", "api", "x", "telegram", "cryptopanic", "local", "auto"}
             else ["auto"]
         )
         if source == "auto":
-            source_order = ["api", "x", "telegram", "cryptopanic", "local"]
+            source_order = ["nlp", "api", "x", "telegram", "cryptopanic", "local"]
 
         for mode in source_order:
             try:
-                if mode == "api":
+                if mode == "nlp":
+                    score = self._fetch_social_sentiment_nlp(symbol)
+                elif mode == "api":
                     score = self._fetch_social_sentiment_endpoint(symbol)
                 elif mode == "x":
                     score = self._fetch_social_sentiment_x(symbol)
@@ -277,6 +281,20 @@ class QuantSignalFetcher:
 
     def _fetch_social_sentiment_telegram(self, symbol: str) -> float | None:
         return TelegramSentimentFetcher(self.settings).fetch(symbol=symbol)
+
+    def _fetch_social_sentiment_nlp(self, symbol: str) -> float | None:
+        if not self.settings.social_sentiment_nlp_enabled:
+            return None
+
+        texts: list[str] = []
+        texts.extend(XSentimentFetcher(self.settings).fetch_recent_texts(symbol=symbol))
+        texts.extend(TelegramSentimentFetcher(self.settings).fetch_recent_texts(symbol=symbol))
+        if not texts:
+            return None
+
+        scorer = NLPSentimentScorer(self.settings)
+        score = scorer.score_texts(texts)
+        return score
 
     @staticmethod
     def _fetch_yahoo_closes(ticker: str, interval: str = "1d", range_value: str = "6mo") -> pd.Series:

@@ -90,6 +90,14 @@ bot-cripto backtest --folds 4
 bot-cripto detect-drift --history-file ./logs/performance_history.json
 ```
 
+Sentiment checks:
+
+```bash
+bot-cripto fetch-sentiment --symbol BTC/USDT --source x
+bot-cripto fetch-sentiment --symbol BTC/USDT --source telegram
+bot-cripto fetch-sentiment-nlp --symbol BTC/USDT
+```
+
 Watchtower dashboard:
 
 ```bash
@@ -125,6 +133,9 @@ Main configurable controls in `.env`:
 - `SOCIAL_SENTIMENT_SOURCE`
 - `SOCIAL_SENTIMENT_ENDPOINT`
 - `CRYPTOPANIC_API_KEY`
+- `SOCIAL_SENTIMENT_NLP_ENABLED`
+- `SOCIAL_SENTIMENT_NLP_MODEL_ID`
+- `SOCIAL_SENTIMENT_NLP_MAX_TEXTS`
 - `X_BEARER_TOKEN`
 - `X_QUERY_TEMPLATE`
 - `X_MAX_RESULTS`
