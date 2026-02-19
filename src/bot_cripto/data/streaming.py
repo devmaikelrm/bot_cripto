@@ -117,6 +117,11 @@ class RealtimeStreamCollector:
         """Fallback mode using exchange REST polling."""
         adapter = build_adapter(self.settings.data_provider)
         exchange = getattr(adapter, "client", adapter)
+        if not hasattr(exchange, "fetch_order_book") or not hasattr(exchange, "fetch_trades"):
+            raise RuntimeError(
+                "Polling stream requires CCXT exchange methods (fetch_order_book/fetch_trades). "
+                "Install dependencies with: pip install -e \".[dev]\" or set up a supported CCXT provider."
+            )
         start = time.time()
         rows: list[StreamSnapshot] = []
         while time.time() - start < duration_seconds:
