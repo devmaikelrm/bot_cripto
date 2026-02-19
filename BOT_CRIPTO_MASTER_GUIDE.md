@@ -1,79 +1,112 @@
-# 🤖 BOT-CRIPTO: Manual Maestro de Operaciones y Estrategia (RTX 4090 Edition)
+# BOT-CRIPTO: Manual Maestro de Operaciones y Estrategia
 
-Este documento resume la configuración técnica, la arquitectura del modelo y la estrategia de Day Trading implementada para el despliegue en la GPU RTX 4090.
+Documento de referencia operacional y técnica del proyecto, con foco en entrenamiento/inferencia, gestión de riesgo y roadmap de precisión.
 
----
+## 1. Infraestructura y Acceso (RunPod)
 
-## 1. Infraestructura y Acceso (GPU RunPod)
+### Detalles de conexión (ejemplo de pod anterior)
+- Host: `213.173.107.85`
+- Puerto SSH: `19355`
+- Usuario: `root`
+- Autenticación: clave SSH privada `id_ed25519`
+- Hardware usado: NVIDIA RTX 4090 (24GB VRAM)
 
-### Detalles de Conexión
-*   **Host:** `213.173.107.85`
-*   **Puerto SSH:** `19355`
-*   **Usuario:** `root`
-*   **Autenticación:** Clave SSH Privada (`id_ed25519`)
-*   **Hardware:** NVIDIA RTX 4090 (24GB VRAM) + 48 Cores CPU.
+### Comandos rápidos
+- Ver logs entrenamiento:
+  - `ssh -p <PORT> root@<HOST> "tail -f /workspace/logs/training.log"`
+- Ver uso de GPU:
+  - `ssh -p <PORT> root@<HOST> "nvidia-smi"`
+- Ver monitor Telegram:
+  - `ssh -p <PORT> root@<HOST> "tail -f /workspace/logs/telegram_monitor.log"`
 
-### Comandos de Gestión Rápidos
-*   **Ver Logs de Entrenamiento:** `ssh -p 19355 root@213.173.107.85 "tail -f /workspace/logs/training.log"`
-*   **Ver Uso de GPU:** `ssh -p 19355 root@213.173.107.85 "nvidia-smi"`
-*   **Estado del Entrenamiento:** `ssh -p 19355 root@213.173.107.85 "python /workspace/monitor_training.py"`
+## 2. Modelo Base (TFT)
 
----
+### Por qué TFT
+1. Selección dinámica de variables relevantes.
+2. Atención temporal para contexto histórico no lineal.
+3. Salida probabilística (cuantiles) útil para gestión de riesgo.
 
-## 2. El Modelo: Temporal Fusion Transformer (TFT)
+### Configuración actual relevante
+- Entrenamiento con GPU (`accelerator=gpu`, `devices=1`, mixed precision).
+- Arquitectura ajustada para robustez/VRAM.
+- Salida con `p10/p50/p90`, `prob_up`, `expected_return`, `risk_score`.
 
-### ¿Por qué TFT?
-A diferencia de las redes neuronales simples (como LSTM o GRU), el TFT es un modelo de **Deep Learning de última generación** diseñado específicamente para series temporales financieras por las siguientes razones:
-1.  **Variable Selection:** Identifica automáticamente qué indicadores (RSI, MACD, Volumen, etc.) son importantes en cada momento y descarta el "ruido".
-2.  **Mecanismo de Atención:** Permite al bot "mirar atrás" en puntos específicos del pasado (por ejemplo, qué pasó en la apertura de New York de ayer) para predecir el futuro.
-3.  **Probabilidades (Quantiles):** No te da un solo precio, te da un rango (P10, P50, P90). Esto permite calcular el riesgo real antes de entrar.
+## 3. Estrategia de Datos
 
-### Optimización para RTX 4090
-*   **Precisión BF16 (Bfloat16):** Utiliza los Tensor Cores de la 4090 para procesar datos el doble de rápido sin perder precisión por desbordamiento (overflow).
-*   **Batch Size 1024:** Saturamos la memoria de la tarjeta para que el entrenamiento sea masivo y rápido.
-*   **4 Capas LSTM:** Hemos profundizado la red para capturar patrones más complejos de 2 años de historia.
+### Doble horizonte
+- 1h: sesgo macro/tendencia.
+- 5m: timing de entrada/ejecución.
 
----
+### Ventana histórica amplia
+- Cubre múltiples regímenes (alcista, bajista, lateral).
+- Reduce sobreajuste a un solo periodo.
 
-## 3. Estrategia de Datos: El "Edge" del Mercado
+## 4. Gestión de Riesgo
 
-### ¿Por qué 1 Hora y 5 Minutos?
-Hemos implementado una estrategia de **Doble Horizonte**:
-*   **Velas de 1 Hora (El Cerebro):** Define la tendencia principal. Evita que el bot haga "Long" cuando el mercado está colapsando en macro.
-*   **Velas de 5 Minutos (El Gatillo):** Define la entrada exacta. Minimiza el Stop Loss y maximiza el Risk/Reward.
-
-### Los 2 Años de Historia (17,400+ velas)
-Usar 2 años es el "punto dulce" porque:
-*   Cubre mercados alcistas, bajistas y laterales.
-*   Proporciona suficiente masa estadística para que el TFT aprenda a ignorar "mechazos" falsos.
-*   Permite al modelo aprender la estacionalidad (ej: BTC suele ser más volátil los martes y miércoles).
-
----
-
-## 4. Gestión de Riesgo Avanzada
-
-### Kelly Criterion (Fraccional)
-El bot no apuesta una cantidad fija. Usa la fórmula de Kelly para calcular el tamaño de la posición basándose en:
-*   **Confianza del Modelo:** Si `prob_up` es 80%, la posición es mayor.
-*   **Ratio de Pago:** Si el beneficio potencial es mucho mayor que el riesgo, aumenta la apuesta.
-*   *Nota: Usamos un "Kelly Fraccional" (0.2) para ser conservadores y evitar quiebras por rachas negativas.*
-
-### Trailing Stop Loss Dinámico
-A medida que el precio sube, el Stop Loss "persigue" al precio a una distancia calculada por la volatilidad (ATR). Si el mercado se da la vuelta, sales con ganancias en lugar de en pérdidas.
-
----
+- Position sizing dinámico por motor de riesgo.
+- Límites de drawdown diarios/semanales.
+- Bloqueos por riesgo y por reglas operativas (`NO_TRADE`).
 
 ## 5. Hoja de Ruta para Máxima Precisión
 
-Para llevar este modelo al siguiente nivel de precisión (+80% de acierto), estas son las configuraciones adicionales recomendadas:
+Estado real al 2026-02-18 (implementación):
 
-1.  **Análisis de Sentimiento en Tiempo Real:** Integrar el miedo/codicia (Fear & Greed Index) y el sentimiento de Twitter/Telegram para detectar movimientos irracionales.
-2.  **Orderbook Imbalance:** No mirar solo el precio, sino cuántas órdenes de compra vs venta hay en el nivel actual. Esto detecta "paredes" de ballenas.
-3.  **Correlación con el SP500 y DXY:** BTC ya no se mueve solo. Integrar el índice del dólar y el mercado de acciones ayuda al modelo a entender el contexto global.
-4.  **Fine-Tuning de Volatilidad:** Configurar el modelo para que cambie de parámetros automáticamente cuando la volatilidad sube de un umbral (modo "crisis").
+1. Análisis de sentimiento en tiempo real
+- Estado: `PARCIAL`
+- Implementado:
+  - `fear_greed`
+  - `social_sentiment` por fuente configurable:
+    - endpoint externo (`SOCIAL_SENTIMENT_ENDPOINT`)
+    - CryptoPanic (`CRYPTOPANIC_API_KEY`)
+    - archivo local `data/raw/social_sentiment_<SYMBOL>.json`
+    - fallback seguro a neutral/FnG
+- Pendiente:
+  - conectores nativos directos para Twitter/X y Telegram channels con pipeline propio.
 
----
-**Estado del Sistema:**
-*   **BTC/USDT 1h:** Entrenamiento al 40%.
-*   **SOL/USDT:** Datos preparados, entrenamiento programado a continuación.
-*   **Bot de Ejecución:** Actualizado con Kelly Criterion.
+2. Orderbook Imbalance
+- Estado: `COMPLETADO`
+- Implementado:
+  - captura de profundidad de Binance
+  - feature `orderbook_imbalance` en inferencia
+  - gating de compra ante pared de venta configurable.
+
+3. Correlación con SP500 y DXY
+- Estado: `COMPLETADO`
+- Implementado:
+  - `sp500_ret_1d`, `dxy_ret_1d`
+  - `corr_btc_sp500`, `corr_btc_dxy`
+  - `macro_risk_off_score`
+  - integración en inferencia y decisión.
+
+4. Fine-tuning de volatilidad (modo crisis)
+- Estado: `COMPLETADO`
+- Implementado:
+  - activación por volatilidad realizada
+  - activación por ventana macro horaria (UTC) configurable
+  - `effective_regime = CRISIS_HIGH_VOL` cuando aplica.
+
+## 6. Variables de Entorno de Precisión (nuevas)
+
+- `MACRO_EVENT_CRISIS_ENABLED`
+- `MACRO_EVENT_CRISIS_WINDOWS_UTC`
+- `MACRO_EVENT_CRISIS_WEEKDAYS`
+- `MACRO_BLOCK_THRESHOLD`
+- `ORDERBOOK_SELL_WALL_THRESHOLD`
+- `SOCIAL_SENTIMENT_BULL_MIN`
+- `SOCIAL_SENTIMENT_BEAR_MAX`
+- `CONTEXT_PROB_ADJUST_MAX`
+- `SOCIAL_SENTIMENT_SOURCE`
+- `SOCIAL_SENTIMENT_ENDPOINT`
+- `CRYPTOPANIC_API_KEY`
+
+## 7. Estado del Sistema
+
+- Entrenamientos clave (1h y 5m) ya completados y respaldados en `artifacts/runpod_backups/incremental`.
+- Monitor de Telegram funcional con tablero de progreso.
+- Backup incremental automático listo para ejecutar antes de apagar GPU.
+
+## 8. Próximos pasos sugeridos
+
+1. Al levantar nueva GPU: deploy del repo actualizado y smoke de inferencia.
+2. Activar fuente real de sentimiento (endpoint propio o proveedor estable).
+3. Validar impacto en backtesting walk-forward y drift para recalibrar umbrales.
