@@ -467,6 +467,9 @@ class TFTPredictor(BasePredictor):
         p50_ret = expected_ret
         p90_ret = calc_ret(p90_price)
 
+        # Sanitize: ensure p10 <= p50 <= p90 to prevent Quantile Crossing errors
+        p10_ret, p50_ret, p90_ret = sorted([p10_ret, p50_ret, p90_ret])
+
         prob_up = self._raw_probability_from_returns(p10_ret, p50_ret, p90_ret)
         if self.probability_calibrator is not None:
             prob_up = float(self.probability_calibrator.predict(np.array([prob_up]))[0])

@@ -850,5 +850,54 @@ def dashboard(
     raise typer.Exit(code=subprocess.call(cmd))
 
 
+@app.command("evaluate")
+def evaluate(
+    symbol: str = typer.Option("BTC/USDT", help="Symbol to evaluate"),
+    days: int = typer.Option(30, help="Days of history to analyze"),
+) -> None:
+    """Generate a professional quantitative performance report."""
+    from bot_cripto.backtesting.evaluator import QuantEvaluator
+    import pandas as pd
+    import json
+
+    settings = get_settings()
+    trades_path = settings.logs_dir / "paper_state.json"
+    
+    if not trades_path.exists():
+        typer.echo("No trades found to evaluate. Start the bot first.")
+        raise typer.Exit(code=1)
+
+    with open(trades_path, "r") as f:
+        data = json.load(f)
+    
+    trades_df = pd.DataFrame(data.get("trades", []))
+    if trades_df.empty:
+        typer.echo("Trade history is empty.")
+        return
+
+    # Cargar precios para el benchmark
+    safe_symbol = symbol.replace("/", "_")
+    price_path = settings.data_dir_raw / f"{safe_symbol}_1h.parquet"
+    if not price_path.exists():
+        typer.echo(f"Price history not found for benchmark: {price_path}")
+        return
+    
+    price_df = pd.read_parquet(price_path)
+    
+    evaluator = QuantEvaluator(initial_equity=settings.initial_equity)
+    metrics = evaluator.calculate_metrics(trades_df, price_df["close"])
+    
+    # Simular regímenes (esto se puede mejorar con el MLRegimeEngine real)
+    regimes = {"TREND": metrics, "RANGE": metrics} # Placeholder
+    
+    report = evaluator.generate_markdown_report(metrics, regimes)
+    typer.echo(report)
+    
+    # Guardar reporte
+    report_path = settings.logs_dir / f"performance_report_{safe_symbol}.md"
+    report_path.write_text(report)
+    typer.echo(f"Report saved to: {report_path}")
+
+
 if __name__ == "__main__":
     app()
