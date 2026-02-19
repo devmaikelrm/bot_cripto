@@ -295,6 +295,10 @@ Implemented:
 - New tests:
   - `tests/test_triple_barrier.py`
 
+Training wiring:
+- `train-return` prefers labeled dataset (`*_features_tb.parquet`) and consumes `tb_ret` when present.
+- `train-trend` prefers labeled dataset and consumes `tb_label` via baseline trend objective when present; falls back to TFT if TB labels are absent.
+
 ## Rollback Strategy
 
 If any change degrades behavior:

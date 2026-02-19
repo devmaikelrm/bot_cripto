@@ -29,6 +29,22 @@ def load_feature_dataset(settings: Settings, symbol: str, timeframe: str | None 
     return pd.read_parquet(path)
 
 
+def load_feature_dataset_for_training(
+    settings: Settings,
+    symbol: str,
+    timeframe: str | None = None,
+    prefer_triple_barrier: bool = False,
+) -> pd.DataFrame:
+    """Load training dataset, optionally preferring triple-barrier labeled file."""
+    tf = timeframe or settings.timeframe
+    base = settings.data_dir_processed / f"{safe_symbol(symbol)}_{tf}_features.parquet"
+    tb = settings.data_dir_processed / f"{safe_symbol(symbol)}_{tf}_features_tb.parquet"
+    path = tb if (prefer_triple_barrier and tb.exists()) else base
+    if not path.exists():
+        raise FileNotFoundError(f"Feature dataset not found: {path}")
+    return pd.read_parquet(path)
+
+
 def build_version_dir(
     settings: Settings,
     model_name: str,

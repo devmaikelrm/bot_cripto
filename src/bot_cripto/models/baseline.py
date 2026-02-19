@@ -43,22 +43,35 @@ class BaselineModel(BasePredictor):
 
     def _prepare_targets(self, df: pd.DataFrame, target_col: str) -> pd.DataFrame:
         frame = df.copy()
+        use_tb_label = "tb_label" in frame.columns and self.objective in {"trend"}
+        use_tb_ret = "tb_ret" in frame.columns and self.objective in {"return", "trend"}
 
         future_close = frame[target_col].shift(-self.horizon)
         frame["target_return"] = (future_close - frame[target_col]) / frame[target_col]
+        if use_tb_ret:
+            frame["target_return"] = frame["tb_ret"].astype(float)
 
         # Direction label with an "edge band" to reduce label noise.
         # For trend/multi objectives we drop samples where the future move is too small to matter.
-        edge = float(self.settings.label_edge_return)
-        if self.objective in {"multi", "trend"} and edge > 0:
+        if use_tb_label:
+            # Triple-barrier label: +1 => up, -1 => down, 0 => no edge (drop)
             direction = np.where(
-                frame["target_return"] > edge,
+                frame["tb_label"] > 0,
                 1,
-                np.where(frame["target_return"] < -edge, 0, np.nan),
+                np.where(frame["tb_label"] < 0, 0, np.nan),
             )
-            frame["target_direction"] = direction
+            frame["target_direction"] = direction.astype(float)
         else:
-            frame["target_direction"] = (frame["target_return"] > 0).astype(int)
+            edge = float(self.settings.label_edge_return)
+            if self.objective in {"multi", "trend"} and edge > 0:
+                direction = np.where(
+                    frame["target_return"] > edge,
+                    1,
+                    np.where(frame["target_return"] < -edge, 0, np.nan),
+                )
+                frame["target_direction"] = direction
+            else:
+                frame["target_direction"] = (frame["target_return"] > 0).astype(int)
 
         if "log_ret" not in frame.columns:
             frame["log_ret"] = np.log(frame[target_col] / frame[target_col].shift(1))
@@ -170,6 +183,10 @@ class BaselineModel(BasePredictor):
             "mae_return_train": float(mae_train),
             "objective_code": float(
                 {"multi": 0, "trend": 1, "return": 2, "risk": 3}[self.objective]
+            ),
+            "using_tb_label": float(1.0 if ("tb_label" in train_df.columns and self.objective == "trend") else 0.0),
+            "using_tb_return": float(
+                1.0 if ("tb_ret" in train_df.columns and self.objective in {"trend", "return"}) else 0.0
             ),
             **calibration_metrics,
         }

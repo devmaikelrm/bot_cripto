@@ -118,6 +118,11 @@ Triple-barrier labeling:
 bot-cripto build-triple-barrier-labels --symbol BTC/USDT --timeframe 5m --pt-mult 2.0 --sl-mult 2.0 --horizon-bars 20
 ```
 
+Training integration:
+
+- `train-return` now prefers `*_features_tb.parquet` and uses `tb_ret` when available.
+- `train-trend` now prefers `*_features_tb.parquet` and uses `tb_label` (baseline trend objective) when available; falls back to TFT if TB labels are missing.
+
 Watchtower dashboard:
 
 ```bash

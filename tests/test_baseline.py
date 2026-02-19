@@ -99,3 +99,24 @@ class TestBaselineModel:
         # Horizon default es 5, así que 2 filas no alcanzan para targets
         with pytest.raises(ValueError, match="No hay datos suficientes"):
             model.train(df)
+
+    def test_triple_barrier_direction_used_for_trend(self, sample_df):
+        df = sample_df.copy()
+        # Alternate +1/-1 labels and some 0 (which should be dropped).
+        labels = np.where(np.arange(len(df)) % 3 == 0, 0, np.where(np.arange(len(df)) % 2 == 0, 1, -1))
+        df["tb_label"] = labels
+        df["tb_ret"] = np.where(labels > 0, 0.01, np.where(labels < 0, -0.01, 0.0))
+
+        model = BaselineModel(objective="trend")
+        meta = model.train(df, target_col="close")
+        assert meta.metrics["using_tb_label"] == 1.0
+        assert "accuracy_in_sample" in meta.metrics
+
+    def test_triple_barrier_return_used_for_return_objective(self, sample_df):
+        df = sample_df.copy()
+        df["tb_ret"] = 0.02  # force positive target return
+        model = BaselineModel(objective="return")
+        meta = model.train(df, target_col="close")
+        assert meta.metrics["using_tb_return"] == 1.0
+        pred = model.predict(df)
+        assert pred.expected_return > 0
