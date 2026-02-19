@@ -45,9 +45,10 @@ Upgrade sentiment from lexicon-only partial mode to a robust hybrid stack:
 - Automatic reweight when one or more sources are missing.
 - Sentiment velocity and EMA smoothing (`SOCIAL_SENTIMENT_EMA_ALPHA`).
 
-3. Phase 3 (next)
+3. Phase 3 (implemented)
 - Real-time ingestion with `cryptofeed` for microstructure synchronization.
-- Persist synchronized stream snapshots for training/inference parity.
+- Persist synchronized stream snapshots in `data/raw/stream`.
+- Fallback to polling mode if websocket stack is unavailable.
 
 4. Phase 4 (next)
 - Retrain and walk-forward validation with updated sentiment features.

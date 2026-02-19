@@ -102,10 +102,17 @@ def _fetch_quant_signals_safe(
             orderbook_imbalance=obi,
             social_sentiment=social,
             social_sentiment_raw=float(social_bundle["social_sentiment_raw"]),
+            social_sentiment_anomaly=float(social_bundle["social_sentiment_anomaly"]),
+            social_sentiment_zscore=float(social_bundle["social_sentiment_zscore"]),
             social_sentiment_velocity=float(social_bundle["social_sentiment_velocity"]),
             social_sentiment_x=float(social_bundle["social_sentiment_x"]),
             social_sentiment_news=float(social_bundle["social_sentiment_news"]),
             social_sentiment_telegram=float(social_bundle["social_sentiment_telegram"]),
+            social_sentiment_reliability_x=float(social_bundle["social_sentiment_reliability_x"]),
+            social_sentiment_reliability_news=float(social_bundle["social_sentiment_reliability_news"]),
+            social_sentiment_reliability_telegram=float(
+                social_bundle["social_sentiment_reliability_telegram"]
+            ),
             sp500_ret_1d=macro["sp500_ret_1d"],
             dxy_ret_1d=macro["dxy_ret_1d"],
             corr_btc_sp500=macro["corr_btc_sp500"],
@@ -120,10 +127,17 @@ def _fetch_quant_signals_safe(
             "orderbook_imbalance": obi,
             "social_sentiment": social,
             "social_sentiment_raw": float(social_bundle["social_sentiment_raw"]),
+            "social_sentiment_anomaly": float(social_bundle["social_sentiment_anomaly"]),
+            "social_sentiment_zscore": float(social_bundle["social_sentiment_zscore"]),
             "social_sentiment_velocity": float(social_bundle["social_sentiment_velocity"]),
             "social_sentiment_x": float(social_bundle["social_sentiment_x"]),
             "social_sentiment_news": float(social_bundle["social_sentiment_news"]),
             "social_sentiment_telegram": float(social_bundle["social_sentiment_telegram"]),
+            "social_sentiment_reliability_x": float(social_bundle["social_sentiment_reliability_x"]),
+            "social_sentiment_reliability_news": float(social_bundle["social_sentiment_reliability_news"]),
+            "social_sentiment_reliability_telegram": float(
+                social_bundle["social_sentiment_reliability_telegram"]
+            ),
             "sp500_ret_1d": macro["sp500_ret_1d"],
             "dxy_ret_1d": macro["dxy_ret_1d"],
             "corr_btc_sp500": macro["corr_btc_sp500"],
@@ -140,10 +154,15 @@ def _fetch_quant_signals_safe(
             "orderbook_imbalance": 0.0,
             "social_sentiment": 0.5,
             "social_sentiment_raw": 0.5,
+            "social_sentiment_anomaly": 0.0,
+            "social_sentiment_zscore": 0.0,
             "social_sentiment_velocity": 0.0,
             "social_sentiment_x": 0.5,
             "social_sentiment_news": 0.5,
             "social_sentiment_telegram": 0.5,
+            "social_sentiment_reliability_x": 1.0,
+            "social_sentiment_reliability_news": 1.0,
+            "social_sentiment_reliability_telegram": 1.0,
             "sp500_ret_1d": 0.0,
             "dxy_ret_1d": 0.0,
             "corr_btc_sp500": 0.0,
@@ -190,6 +209,7 @@ def _apply_context_adjustments(
 ) -> tuple[PredictionOutput, dict[str, float]]:
     """Apply lightweight context adjustment from sentiment/orderbook/macro."""
     social = _clamp(float(q_data.get("social_sentiment", 0.5)), 0.0, 1.0)
+    social_anomaly = _clamp(float(q_data.get("social_sentiment_anomaly", 0.0)), 0.0, 1.0)
     orderbook = _clamp(float(q_data.get("orderbook_imbalance", 0.0)), -1.0, 1.0)
     macro_risk_off = _clamp(float(q_data.get("macro_risk_off_score", 0.5)), 0.0, 1.0)
     sp500_ret = float(q_data.get("sp500_ret_1d", 0.0))
@@ -211,7 +231,8 @@ def _apply_context_adjustments(
         (0.35 * social_component)
         + (0.35 * orderbook)
         + (0.20 * macro_component)
-        + (0.10 * corr_component),
+        + (0.10 * corr_component)
+        - (0.15 * social_anomaly),
         -1.0,
         1.0,
     )
@@ -219,7 +240,11 @@ def _apply_context_adjustments(
     delta_prob = context_score * settings.context_prob_adjust_max
     adj_prob = _clamp(pred.prob_up + delta_prob, 0.0, 1.0)
     adj_return = float(pred.expected_return * (1.0 + 0.25 * context_score))
-    adj_risk = _clamp(pred.risk_score * (1.0 - 0.20 * context_score), 0.0, 1.0)
+    adj_risk = _clamp(
+        pred.risk_score * (1.0 - 0.20 * context_score) * (1.0 + (0.25 * social_anomaly)),
+        0.0,
+        1.0,
+    )
 
     adjusted = PredictionOutput(
         prob_up=adj_prob,
@@ -236,6 +261,7 @@ def _apply_context_adjustments(
         "orderbook_component": orderbook,
         "macro_component": macro_component,
         "corr_component": corr_component,
+        "anomaly_component": -0.15 * social_anomaly,
     }
     return adjusted, debug
 

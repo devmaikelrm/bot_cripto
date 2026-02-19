@@ -56,6 +56,28 @@ def test_context_adjustments_bearish_decrease_prob_and_return() -> None:
     assert debug["context_score"] < 0.0
 
 
+def test_context_adjustments_anomaly_penalizes_confidence_and_risk() -> None:
+    settings = Settings(context_prob_adjust_max=0.05)
+    q_data_low = {
+        "social_sentiment": 0.80,
+        "social_sentiment_anomaly": 0.0,
+        "orderbook_imbalance": 0.30,
+        "macro_risk_off_score": 0.40,
+        "sp500_ret_1d": 0.01,
+        "dxy_ret_1d": -0.01,
+        "corr_btc_sp500": 0.4,
+        "corr_btc_dxy": -0.4,
+    }
+    q_data_high = dict(q_data_low)
+    q_data_high["social_sentiment_anomaly"] = 1.0
+
+    low, _ = _apply_context_adjustments(_base_prediction(), q_data_low, settings)
+    high, debug = _apply_context_adjustments(_base_prediction(), q_data_high, settings)
+    assert high.prob_up < low.prob_up
+    assert high.risk_score > low.risk_score
+    assert debug["anomaly_component"] < 0.0
+
+
 def test_context_adjustments_clamp_prob_range() -> None:
     settings = Settings(context_prob_adjust_max=0.30)
     pred = PredictionOutput(

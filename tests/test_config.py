@@ -18,6 +18,11 @@ class TestSettings:
         assert settings.encoder_length == 60
         assert settings.paper_mode is True
         assert settings.live_mode is False
+        assert settings.stream_snapshot_interval_seconds == 5
+        assert settings.stream_orderbook_depth == 20
+        assert settings.stream_retention_days == 7
+        assert settings.social_sentiment_reliability_enabled is True
+        assert settings.social_sentiment_reliability_min_weight == 0.10
 
     def test_symbols_list(self) -> None:
         """Verifica parsing de symbols comma-separated."""

@@ -211,6 +211,28 @@ def fetch_macro(
     typer.echo("Macro data download complete")
 
 
+@app.command("stream-capture")
+def stream_capture(
+    symbol: str | None = typer.Option(None, help="Pair like BTC/USDT"),
+    duration: int = typer.Option(60, help="Capture duration in seconds"),
+    source: str = typer.Option("cryptofeed", help="Stream source: cryptofeed|poll"),
+    snapshot_every: int | None = typer.Option(None, help="Snapshot period seconds"),
+) -> None:
+    """Capture realtime microstructure snapshots into parquet."""
+    from bot_cripto.data.streaming import RealtimeStreamCollector
+
+    settings = get_settings()
+    target_symbol = symbol or settings.symbols_list[0]
+    collector = RealtimeStreamCollector(settings)
+    path = collector.capture(
+        symbol=target_symbol,
+        duration_seconds=duration,
+        source=source,
+        snapshot_every_seconds=snapshot_every,
+    )
+    typer.echo(f"Stream saved: {path}")
+
+
 @app.command("fetch-sentiment")
 def fetch_sentiment(
     symbol: str | None = typer.Option(None, help="Pair like BTC/USDT"),
@@ -564,6 +586,129 @@ def realistic_backtest(
 
     out = {k: v for k, v in report.__dict__.items() if k != "trades"}
     out["sample_trades"] = [t.__dict__ for t in report.trades[:10]]
+    typer.echo(json.dumps(out, indent=2, default=str))
+
+
+@app.command("backtest-ab-sentiment")
+def backtest_ab_sentiment(
+    symbol: str | None = typer.Option(None, help="Pair"),
+    timeframe: str | None = typer.Option(None, help="Timeframe"),
+    maker_fee: float = typer.Option(2.0, help="Maker fee in bps"),
+    taker_fee: float = typer.Option(4.0, help="Taker fee in bps"),
+    base_slippage: float = typer.Option(1.0, help="Base slippage in bps"),
+    volume_impact: float = typer.Option(0.1, help="Volume impact factor"),
+    latency: int = typer.Option(1, help="Execution latency in bars"),
+    max_fill: float = typer.Option(0.10, help="Max fill ratio of bar volume"),
+    equity: float = typer.Option(10_000.0, help="Initial equity"),
+    position_frac: float = typer.Option(0.02, help="Position size fraction"),
+    train_frac: float = typer.Option(0.7, help="Training fraction"),
+) -> None:
+    """A/B backtest: baseline signals vs sentiment/context-adjusted signals."""
+    from bot_cripto.backtesting.realistic import CostModel, RealisticBacktester
+    from bot_cripto.jobs.inference import _apply_context_adjustments
+    from bot_cripto.models.baseline import BaselineModel
+    from bot_cripto.models.base import PredictionOutput
+
+    settings = get_settings()
+    target_symbol = symbol or settings.symbols_list[0]
+    target_timeframe = timeframe or settings.timeframe
+    safe_symbol = target_symbol.replace("/", "_")
+    input_path = settings.data_dir_processed / f"{safe_symbol}_{target_timeframe}_features.parquet"
+    if not input_path.exists():
+        typer.echo(f"Feature dataset not found: {input_path}")
+        raise typer.Exit(code=1)
+
+    df = pd.read_parquet(input_path)
+    if len(df) < 200:
+        typer.echo("Dataset too small for A/B backtest")
+        raise typer.Exit(code=2)
+
+    model = BaselineModel()
+    train_size = int(len(df) * train_frac)
+    train_df = df.iloc[:train_size]
+    model.train(train_df, target_col="close")
+
+    def _signal_from_pred(pred: PredictionOutput) -> int:
+        if pred.expected_return > settings.min_expected_return and pred.prob_up >= settings.prob_min:
+            return 1
+        if pred.expected_return < -settings.min_expected_return and pred.prob_up <= (1.0 - settings.prob_min):
+            return -1
+        return 0
+
+    signals_a: list[int] = []
+    signals_b: list[int] = []
+    for i in range(train_size, len(df)):
+        window = df.iloc[:i]
+        pred_raw: PredictionOutput = model.predict(window)
+
+        row = df.iloc[i]
+        q_data = {
+            "social_sentiment": float(row.get("social_sentiment", 0.5)),
+            "social_sentiment_anomaly": float(row.get("social_sentiment_anomaly", 0.0)),
+            "orderbook_imbalance": float(row.get("orderbook_imbalance", 0.0)),
+            "macro_risk_off_score": float(row.get("macro_risk_off_score", 0.5)),
+            "sp500_ret_1d": float(row.get("sp500_ret_1d", 0.0)),
+            "dxy_ret_1d": float(row.get("dxy_ret_1d", 0.0)),
+            "corr_btc_sp500": float(row.get("corr_btc_sp500", 0.0)),
+            "corr_btc_dxy": float(row.get("corr_btc_dxy", 0.0)),
+        }
+        pred_adj, _ = _apply_context_adjustments(pred_raw, q_data, settings)
+        signals_a.append(_signal_from_pred(pred_raw))
+        signals_b.append(_signal_from_pred(pred_adj))
+
+    test_df_a = df.iloc[train_size:].copy()
+    test_df_a["signal"] = signals_a
+    test_df_b = df.iloc[train_size:].copy()
+    test_df_b["signal"] = signals_b
+
+    cost_model = CostModel(
+        maker_fee_bps=maker_fee,
+        taker_fee_bps=taker_fee,
+        base_slippage_bps=base_slippage,
+        volume_impact_factor=volume_impact,
+        latency_bars=latency,
+        max_fill_ratio=max_fill,
+    )
+    runner = RealisticBacktester(
+        cost_model=cost_model,
+        initial_equity=equity,
+        position_size_frac=position_frac,
+    )
+    report_a = runner.run(test_df_a)
+    report_b = runner.run(test_df_b)
+
+    out = {
+        "symbol": target_symbol,
+        "timeframe": target_timeframe,
+        "rows_total": len(df),
+        "rows_test": len(test_df_a),
+        "signals_baseline_active": int(sum(1 for x in signals_a if x != 0)),
+        "signals_with_sentiment_active": int(sum(1 for x in signals_b if x != 0)),
+        "baseline": {
+            "net_return_pct": report_a.net_return_pct,
+            "sharpe": report_a.sharpe,
+            "max_drawdown": report_a.max_drawdown,
+            "win_rate": report_a.win_rate,
+            "total_trades": report_a.total_trades,
+            "total_net_pnl": report_a.total_net_pnl,
+        },
+        "with_sentiment": {
+            "net_return_pct": report_b.net_return_pct,
+            "sharpe": report_b.sharpe,
+            "max_drawdown": report_b.max_drawdown,
+            "win_rate": report_b.win_rate,
+            "total_trades": report_b.total_trades,
+            "total_net_pnl": report_b.total_net_pnl,
+        },
+        "delta": {
+            "net_return_pct": report_b.net_return_pct - report_a.net_return_pct,
+            "sharpe": report_b.sharpe - report_a.sharpe,
+            "max_drawdown": report_b.max_drawdown - report_a.max_drawdown,
+            "win_rate": report_b.win_rate - report_a.win_rate,
+            "total_trades": report_b.total_trades - report_a.total_trades,
+            "total_net_pnl": report_b.total_net_pnl - report_a.total_net_pnl,
+        },
+    }
     typer.echo(json.dumps(out, indent=2, default=str))
 
 

@@ -83,11 +83,24 @@ bot-cripto train-risk
 bot-cripto run-inference
 ```
 
+Realtime stream capture:
+
+```bash
+pip install -e ".[stream]"
+bot-cripto stream-capture --symbol BTC/USDT --duration 120 --source cryptofeed
+```
+
 Backtest and drift:
 
 ```bash
 bot-cripto backtest --folds 4
 bot-cripto detect-drift --history-file ./logs/performance_history.json
+```
+
+A/B sentiment backtest:
+
+```bash
+bot-cripto backtest-ab-sentiment --symbol BTC/USDT --timeframe 5m
 ```
 
 Sentiment checks:
@@ -141,6 +154,11 @@ Main configurable controls in `.env`:
 - `SOCIAL_SENTIMENT_WEIGHT_NEWS`
 - `SOCIAL_SENTIMENT_WEIGHT_TELEGRAM`
 - `SOCIAL_SENTIMENT_EMA_ALPHA`
+- `SOCIAL_SENTIMENT_RELIABILITY_ENABLED`
+- `SOCIAL_SENTIMENT_RELIABILITY_MIN_WEIGHT`
+- `SOCIAL_SENTIMENT_RELIABILITY_WINDOW`
+- `SOCIAL_SENTIMENT_ANOMALY_WINDOW`
+- `SOCIAL_SENTIMENT_ANOMALY_Z_CLIP`
 - `X_BEARER_TOKEN`
 - `X_QUERY_TEMPLATE`
 - `X_MAX_RESULTS`
@@ -169,6 +187,9 @@ Main configurable controls in `.env`:
 - `DATA_PROVIDER`
 - `WATCHTOWER_DB_PATH`
 - `DASHBOARD_REFRESH_SECONDS`
+- `STREAM_SNAPSHOT_INTERVAL_SECONDS`
+- `STREAM_ORDERBOOK_DEPTH`
+- `STREAM_RETENTION_DAYS`
 - `DASHBOARD_TARGET_START`
 
 Operational state files:

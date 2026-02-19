@@ -197,6 +197,90 @@ Config:
 - `SOCIAL_SENTIMENT_WEIGHT_TELEGRAM`
 - `SOCIAL_SENTIMENT_EMA_ALPHA`
 
+## 2026-02-19 Precision Roadmap Applied (phase 5 - realtime stream ingestion)
+
+Status: Completed
+
+Implemented:
+- New module `src/bot_cripto/data/streaming.py`:
+  - realtime capture via `cryptofeed`
+  - automatic fallback to REST polling when unavailable
+  - snapshot persistence in `data/raw/stream/{symbol}_stream.parquet`
+  - retention policy with file lock protection
+- New CLI command:
+  - `bot-cripto stream-capture --symbol BTC/USDT --duration 120 --source cryptofeed`
+- Optional dependency group:
+  - `pip install -e ".[stream]"`
+
+Config:
+- `STREAM_SNAPSHOT_INTERVAL_SECONDS`
+- `STREAM_ORDERBOOK_DEPTH`
+- `STREAM_RETENTION_DAYS`
+
+Tests:
+- `tests/test_streaming.py`
+
+## 2026-02-19 Sentiment roadmap refinement
+
+Status: Completed
+
+Implemented:
+- Added implementation-focused document:
+  - `docs/SENTIMENT_STACK_IMPLEMENTABLE_PLAN.md`
+- Keeps `docs/sentiment-stack-mejorado.md` as vision reference and defines concrete next steps aligned to current repo architecture.
+
+## 2026-02-19 Sentiment reliability weighting
+
+Status: Completed
+
+Implemented:
+- Source reliability weighting in `src/bot_cripto/data/quant_signals.py`.
+- Reliability-aware bundle fields:
+  - `social_sentiment_reliability_x`
+  - `social_sentiment_reliability_news`
+  - `social_sentiment_reliability_telegram`
+- Inference wiring persists reliability fields in quant signals output.
+- Config controls:
+  - `SOCIAL_SENTIMENT_RELIABILITY_ENABLED`
+  - `SOCIAL_SENTIMENT_RELIABILITY_MIN_WEIGHT`
+  - `SOCIAL_SENTIMENT_RELIABILITY_WINDOW`
+
+Tests:
+- `tests/test_quant_signals.py` extended for reliability-weight behavior.
+- `tests/test_config.py` defaults updated.
+
+## 2026-02-19 Sentiment anomaly detection
+
+Status: Completed
+
+Implemented:
+- Robust anomaly scoring in `src/bot_cripto/data/quant_signals.py`:
+  - `social_sentiment_anomaly` in `[0,1]`
+  - `social_sentiment_zscore` signed
+  - MAD-first z-score with std fallback
+- Inference wiring stores anomaly fields through quant payload.
+- Config controls:
+  - `SOCIAL_SENTIMENT_ANOMALY_WINDOW`
+  - `SOCIAL_SENTIMENT_ANOMALY_Z_CLIP`
+
+Tests:
+- `tests/test_quant_signals.py` includes anomaly spike detection coverage.
+
+Additional integration:
+- context adjustment now includes anomaly penalty in `src/bot_cripto/jobs/inference.py`:
+  - reduces effective context score under extreme sentiment spikes
+  - increases adjusted risk score when anomaly is high
+
+## 2026-02-19 A/B sentiment backtest command
+
+Status: Completed (initial version)
+
+Implemented:
+- New CLI command:
+  - `bot-cripto backtest-ab-sentiment --symbol BTC/USDT --timeframe 5m`
+- Compares baseline vs context/sentiment-adjusted signal generation under the same realistic execution-cost model.
+- Outputs JSON with baseline metrics, with-sentiment metrics, and deltas.
+
 ## Rollback Strategy
 
 If any change degrades behavior:

@@ -4,6 +4,7 @@
 
 ```
 fetch -> validate -> raw parquet -> features -> processed parquet
+      -> realtime stream snapshots (optional)
       -> train trend/return/risk -> versioned models
       -> ensemble -> regime engine -> risk engine -> decision engine
       -> paper/live executor -> telegram
@@ -12,6 +13,7 @@ fetch -> validate -> raw parquet -> features -> processed parquet
 ## Layers
 
 - `src/bot_cripto/data`: exchange ingestion and persistence.
+- `src/bot_cripto/data/streaming.py`: realtime microstructure snapshots (cryptofeed/poll fallback).
 - `src/bot_cripto/features`: indicators and feature transforms.
 - `src/bot_cripto/models`: model contract, baseline, TFT.
 - `src/bot_cripto/jobs`: train and inference orchestration.
@@ -27,6 +29,7 @@ fetch -> validate -> raw parquet -> features -> processed parquet
 ## Artifact Strategy
 
 - Raw data: `data/raw/{symbol}_{tf}.parquet`
+- Realtime stream: `data/raw/stream/{symbol}_stream.parquet`
 - Features: `data/processed/{symbol}_{tf}_features.parquet`
 - Models: `models/{trend|return|risk|baseline}/{symbol}/{timestamp_commit}/`
   - Includes model artifacts + `metadata.json` (train metrics, calibration metrics, git commit, timestamp)

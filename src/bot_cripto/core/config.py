@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     social_sentiment_weight_news: Annotated[float, Field(ge=0.0, le=1.0)] = 0.3
     social_sentiment_weight_telegram: Annotated[float, Field(ge=0.0, le=1.0)] = 0.2
     social_sentiment_ema_alpha: Annotated[float, Field(ge=0.01, le=1.0)] = 0.35
+    social_sentiment_reliability_enabled: bool = True
+    social_sentiment_reliability_min_weight: Annotated[float, Field(ge=0.0, le=1.0)] = 0.10
+    social_sentiment_reliability_window: Annotated[int, Field(ge=10, le=1000)] = 96
+    social_sentiment_anomaly_window: Annotated[int, Field(ge=10, le=5000)] = 96
+    social_sentiment_anomaly_z_clip: Annotated[float, Field(ge=1.0, le=10.0)] = 4.0
     x_bearer_token: str = ""
     x_query_template: str = "({coin} OR ${coin} OR #{coin}) lang:en -is:retweet"
     x_max_results: Annotated[int, Field(ge=10, le=100)] = 50
@@ -110,6 +115,9 @@ class Settings(BaseSettings):
     dashboard_target_start: str = "2017-01-01"
     fetch_log_every_batches: Annotated[int, Field(ge=1, le=500)] = 1
     fetch_checkpoint_every_batches: Annotated[int, Field(ge=0, le=500)] = 25
+    stream_snapshot_interval_seconds: Annotated[int, Field(ge=1, le=300)] = 5
+    stream_orderbook_depth: Annotated[int, Field(ge=5, le=200)] = 20
+    stream_retention_days: Annotated[int, Field(ge=1, le=90)] = 7
 
     @property
     def symbols_list(self) -> list[str]:

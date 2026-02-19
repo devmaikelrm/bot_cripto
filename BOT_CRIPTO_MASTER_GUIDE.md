@@ -91,6 +91,14 @@ Estado real al 2026-02-19 (implementación):
   - activación por ventana macro horaria (UTC) configurable.
   - `effective_regime = CRISIS_HIGH_VOL` cuando aplica.
 
+5. Ingesta realtime de microestructura
+- Estado: `COMPLETADO`
+- Implementado:
+  - captura websocket con `cryptofeed` (opcional).
+  - fallback automático a polling REST si `cryptofeed` no está disponible.
+  - persistencia de snapshots en `data/raw/stream/{symbol}_stream.parquet`.
+  - retención configurable y escritura segura con lock.
+
 ## 6. Variables de Entorno de Precisión (nuevas)
 
 - `MACRO_EVENT_CRISIS_ENABLED`
@@ -116,6 +124,9 @@ Estado real al 2026-02-19 (implementación):
 - `X_MAX_RESULTS`
 - `TELEGRAM_SENTIMENT_CHAT_IDS`
 - `TELEGRAM_SENTIMENT_LOOKBACK_LIMIT`
+- `STREAM_SNAPSHOT_INTERVAL_SECONDS`
+- `STREAM_ORDERBOOK_DEPTH`
+- `STREAM_RETENTION_DAYS`
 
 ## 7. Estado del Sistema
 

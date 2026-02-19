@@ -165,10 +165,15 @@ class QuantSignalFetcher:
             return {
                 "social_sentiment": cached_sent,
                 "social_sentiment_raw": cached_sent,
+                "social_sentiment_anomaly": 0.0,
+                "social_sentiment_zscore": 0.0,
                 "social_sentiment_velocity": 0.0,
                 "social_sentiment_x": 0.5,
                 "social_sentiment_news": 0.5,
                 "social_sentiment_telegram": 0.5,
+                "social_sentiment_reliability_x": 1.0,
+                "social_sentiment_reliability_news": 1.0,
+                "social_sentiment_reliability_telegram": 1.0,
             }
 
         source = (self.settings.social_sentiment_source or "auto").strip().lower()
@@ -205,10 +210,15 @@ class QuantSignalFetcher:
                     return {
                         "social_sentiment": score01,
                         "social_sentiment_raw": score01,
+                        "social_sentiment_anomaly": 0.0,
+                        "social_sentiment_zscore": 0.0,
                         "social_sentiment_velocity": 0.0,
                         "social_sentiment_x": 0.5,
                         "social_sentiment_news": 0.5,
                         "social_sentiment_telegram": 0.5,
+                        "social_sentiment_reliability_x": 1.0,
+                        "social_sentiment_reliability_news": 1.0,
+                        "social_sentiment_reliability_telegram": 1.0,
                     }
             except Exception as exc:
                 logger.warning("social_sentiment_source_failed", symbol=symbol, source=mode, error=str(exc))
@@ -222,10 +232,15 @@ class QuantSignalFetcher:
         return {
             "social_sentiment": score01,
             "social_sentiment_raw": score01,
+            "social_sentiment_anomaly": 0.0,
+            "social_sentiment_zscore": 0.0,
             "social_sentiment_velocity": 0.0,
             "social_sentiment_x": 0.5,
             "social_sentiment_news": 0.5,
             "social_sentiment_telegram": 0.5,
+            "social_sentiment_reliability_x": 1.0,
+            "social_sentiment_reliability_news": 1.0,
+            "social_sentiment_reliability_telegram": 1.0,
         }
 
     def _fetch_social_sentiment_blend_bundle(self, symbol: str) -> dict[str, float] | None:
@@ -237,29 +252,41 @@ class QuantSignalFetcher:
             x_signed=x_signed,
             news_signed=news_signed,
             telegram_signed=tg_signed,
+            symbol=symbol,
         )
         if weighted_raw is None:
             return None
 
         raw01 = _normalize_sentiment_score(weighted_raw)
+        anomaly, zscore = self._compute_social_sentiment_anomaly(symbol=symbol, raw01=raw01)
         ema01, velocity = self._smooth_social_sentiment(symbol=symbol, raw01=raw01)
         bundle = {
             "social_sentiment": ema01,
             "social_sentiment_raw": raw01,
+            "social_sentiment_anomaly": anomaly,
+            "social_sentiment_zscore": zscore,
             "social_sentiment_velocity": velocity,
             "social_sentiment_x": _normalize_sentiment_score(x_signed) if x_signed is not None else 0.5,
             "social_sentiment_news": _normalize_sentiment_score(news_signed) if news_signed is not None else 0.5,
             "social_sentiment_telegram": _normalize_sentiment_score(tg_signed) if tg_signed is not None else 0.5,
+            "social_sentiment_reliability_x": self._source_reliability("x", symbol, x_signed),
+            "social_sentiment_reliability_news": self._source_reliability("news", symbol, news_signed),
+            "social_sentiment_reliability_telegram": self._source_reliability("telegram", symbol, tg_signed),
         }
         logger.info(
             "social_sentiment_blend_captured",
             symbol=symbol,
             social_sentiment=bundle["social_sentiment"],
             social_sentiment_raw=bundle["social_sentiment_raw"],
+            social_sentiment_anomaly=bundle["social_sentiment_anomaly"],
+            social_sentiment_zscore=bundle["social_sentiment_zscore"],
             social_sentiment_velocity=bundle["social_sentiment_velocity"],
             source_x=bundle["social_sentiment_x"],
             source_news=bundle["social_sentiment_news"],
             source_telegram=bundle["social_sentiment_telegram"],
+            reliability_x=bundle["social_sentiment_reliability_x"],
+            reliability_news=bundle["social_sentiment_reliability_news"],
+            reliability_telegram=bundle["social_sentiment_reliability_telegram"],
         )
         return bundle
 
@@ -376,12 +403,22 @@ class QuantSignalFetcher:
         x_signed: float | None,
         news_signed: float | None,
         telegram_signed: float | None,
+        symbol: str = "BTC/USDT",
     ) -> float | None:
+        rel_x = self._source_reliability("x", symbol, x_signed)
+        rel_news = self._source_reliability("news", symbol, news_signed)
+        rel_telegram = self._source_reliability("telegram", symbol, telegram_signed)
         weighted_terms: list[tuple[float, float]] = [
-            (float(self.settings.social_sentiment_weight_x), x_signed if x_signed is not None else np.nan),
-            (float(self.settings.social_sentiment_weight_news), news_signed if news_signed is not None else np.nan),
             (
-                float(self.settings.social_sentiment_weight_telegram),
+                float(self.settings.social_sentiment_weight_x) * rel_x,
+                x_signed if x_signed is not None else np.nan,
+            ),
+            (
+                float(self.settings.social_sentiment_weight_news) * rel_news,
+                news_signed if news_signed is not None else np.nan,
+            ),
+            (
+                float(self.settings.social_sentiment_weight_telegram) * rel_telegram,
                 telegram_signed if telegram_signed is not None else np.nan,
             ),
         ]
@@ -393,6 +430,38 @@ class QuantSignalFetcher:
             return None
         combined = float(sum(w * v for w, v in valid) / total_weight)
         return float(max(-1.0, min(1.0, combined)))
+
+    def _source_reliability(self, source: str, symbol: str, value_signed: float | None) -> float:
+        if not self.settings.social_sentiment_reliability_enabled:
+            return 1.0
+        min_w = float(self.settings.social_sentiment_reliability_min_weight)
+        if value_signed is None:
+            return min_w
+
+        path = self.data_dir / f"signals_{symbol.replace('/', '_')}.parquet"
+        col = f"social_sentiment_{source}"
+        if not path.exists():
+            return 1.0
+
+        try:
+            frame = pd.read_parquet(path, columns=[col])
+        except Exception:
+            return 1.0
+        if frame.empty or col not in frame.columns:
+            return 1.0
+
+        window = int(self.settings.social_sentiment_reliability_window)
+        series = pd.to_numeric(frame[col], errors="coerce").dropna().tail(window)
+        if series.empty:
+            return 1.0
+
+        # Lower volatility in the source score means higher reliability.
+        signed = (series.astype(float) * 2.0) - 1.0
+        std = float(signed.std(ddof=0)) if len(signed) > 1 else 0.0
+        stability = float(max(0.0, min(1.0, 1.0 - (std / 0.75))))
+        sample_factor = float(max(0.2, min(1.0, len(signed) / float(window))))
+        reliability = (0.6 * stability) + (0.4 * sample_factor)
+        return float(max(min_w, min(1.0, reliability)))
 
     def _sentiment_state_path(self, symbol: str) -> Path:
         safe_symbol = symbol.replace("/", "_")
@@ -428,6 +497,39 @@ class QuantSignalFetcher:
             velocity = float(ema - float(prev_ema))
         self._save_sentiment_state(symbol, ema01=ema, raw01=raw01)
         return ema, velocity
+
+    def _compute_social_sentiment_anomaly(self, symbol: str, raw01: float) -> tuple[float, float]:
+        """Return anomaly score [0,1] + signed z-score over recent raw sentiment."""
+        path = self.data_dir / f"signals_{symbol.replace('/', '_')}.parquet"
+        if not path.exists():
+            return 0.0, 0.0
+        try:
+            hist = pd.read_parquet(path, columns=["social_sentiment_raw"])
+        except Exception:
+            return 0.0, 0.0
+        if hist.empty:
+            return 0.0, 0.0
+
+        series = pd.to_numeric(hist["social_sentiment_raw"], errors="coerce").dropna()
+        window = int(self.settings.social_sentiment_anomaly_window)
+        series = series.tail(window)
+        if len(series) < 12:
+            return 0.0, 0.0
+
+        med = float(series.median())
+        mad = float((series - med).abs().median())
+        if mad > 1e-8:
+            denom = 1.4826 * mad
+        else:
+            std = float(series.std(ddof=0))
+            if std <= 1e-8:
+                return 0.0, 0.0
+            denom = std
+
+        z = float((raw01 - med) / denom)
+        clip = float(self.settings.social_sentiment_anomaly_z_clip)
+        anomaly = float(max(0.0, min(1.0, abs(z) / clip)))
+        return anomaly, z
 
     @staticmethod
     def _fetch_yahoo_closes(ticker: str, interval: str = "1d", range_value: str = "6mo") -> pd.Series:
@@ -523,10 +625,15 @@ class QuantSignalFetcher:
         orderbook_imbalance: float = 0.0,
         social_sentiment: float = 0.5,
         social_sentiment_raw: float = 0.5,
+        social_sentiment_anomaly: float = 0.0,
+        social_sentiment_zscore: float = 0.0,
         social_sentiment_velocity: float = 0.0,
         social_sentiment_x: float = 0.5,
         social_sentiment_news: float = 0.5,
         social_sentiment_telegram: float = 0.5,
+        social_sentiment_reliability_x: float = 1.0,
+        social_sentiment_reliability_news: float = 1.0,
+        social_sentiment_reliability_telegram: float = 1.0,
         sp500_ret_1d: float = 0.0,
         dxy_ret_1d: float = 0.0,
         corr_btc_sp500: float = 0.0,
@@ -544,10 +651,15 @@ class QuantSignalFetcher:
                 "orderbook_imbalance": [orderbook_imbalance],
                 "social_sentiment": [social_sentiment],
                 "social_sentiment_raw": [social_sentiment_raw],
+                "social_sentiment_anomaly": [social_sentiment_anomaly],
+                "social_sentiment_zscore": [social_sentiment_zscore],
                 "social_sentiment_velocity": [social_sentiment_velocity],
                 "social_sentiment_x": [social_sentiment_x],
                 "social_sentiment_news": [social_sentiment_news],
                 "social_sentiment_telegram": [social_sentiment_telegram],
+                "social_sentiment_reliability_x": [social_sentiment_reliability_x],
+                "social_sentiment_reliability_news": [social_sentiment_reliability_news],
+                "social_sentiment_reliability_telegram": [social_sentiment_reliability_telegram],
                 "sp500_ret_1d": [sp500_ret_1d],
                 "dxy_ret_1d": [dxy_ret_1d],
                 "corr_btc_sp500": [corr_btc_sp500],

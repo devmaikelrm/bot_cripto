@@ -45,6 +45,9 @@ ui = [
 nlp = [
     "transformers>=4.44.0",
 ]
+stream = [
+    "cryptofeed>=2.4.1",
+]
 
 [project.scripts]
 bot-cripto = "bot_cripto.cli:app"
