@@ -76,7 +76,7 @@ def _to_contract_decision(action: Action, blocked: bool) -> str:
 
 
 def _fetch_quant_signals_safe(
-    settings: Settings, target: str
+    settings: Settings, target: str, df: Any
 ) -> dict[str, float]:
     """Fetch quant signals with fallback to cached/neutral values."""
     try:
@@ -85,16 +85,66 @@ def _fetch_quant_signals_safe(
         fng = fetcher.fetch_fear_and_greed()
         oi = fetcher.fetch_open_interest(target)
         lsr = fetcher.fetch_long_short_ratio(target)
-        fetcher.save_signals(target, funding, fng, open_interest=oi, long_short_ratio=lsr)
+        obi = fetcher.fetch_orderbook_imbalance(target)
+        social = fetcher.fetch_social_sentiment(target)
+        macro = fetcher.fetch_macro_context(df["close"])
+        fetcher.save_signals(
+            target,
+            funding,
+            fng,
+            open_interest=oi,
+            long_short_ratio=lsr,
+            orderbook_imbalance=obi,
+            social_sentiment=social,
+            sp500_ret_1d=macro["sp500_ret_1d"],
+            dxy_ret_1d=macro["dxy_ret_1d"],
+            corr_btc_sp500=macro["corr_btc_sp500"],
+            corr_btc_dxy=macro["corr_btc_dxy"],
+            macro_risk_off_score=macro["macro_risk_off_score"],
+        )
         return {
             "funding_rate": funding,
             "fear_greed": fng,
             "open_interest": oi,
             "long_short_ratio": lsr,
+            "orderbook_imbalance": obi,
+            "social_sentiment": social,
+            "sp500_ret_1d": macro["sp500_ret_1d"],
+            "dxy_ret_1d": macro["dxy_ret_1d"],
+            "corr_btc_sp500": macro["corr_btc_sp500"],
+            "corr_btc_dxy": macro["corr_btc_dxy"],
+            "macro_risk_off_score": macro["macro_risk_off_score"],
         }
     except Exception as exc:
         logger.warning("quant_signals_fetch_failed_using_defaults", error=str(exc))
-        return {"funding_rate": 0.0, "fear_greed": 0.5, "open_interest": 0.0, "long_short_ratio": 1.0}
+        return {
+            "funding_rate": 0.0,
+            "fear_greed": 0.5,
+            "open_interest": 0.0,
+            "long_short_ratio": 1.0,
+            "orderbook_imbalance": 0.0,
+            "social_sentiment": 0.5,
+            "sp500_ret_1d": 0.0,
+            "dxy_ret_1d": 0.0,
+            "corr_btc_sp500": 0.0,
+            "corr_btc_dxy": 0.0,
+            "macro_risk_off_score": 0.5,
+        }
+
+
+def _detect_volatility_mode(settings: Settings, df: Any) -> tuple[str, float]:
+    """Return mode + realised volatility (std returns) for recent window."""
+    try:
+        close = df["close"].astype(float)
+        ret = close.pct_change().dropna()
+        if len(ret) < 20:
+            return "NORMAL", 0.0
+        recent = ret.tail(96)
+        vol = float(recent.std())
+        mode = "CRISIS_HIGH_VOL" if vol >= settings.regime_atr_high_vol_pct else "NORMAL"
+        return mode, vol
+    except Exception:
+        return "NORMAL", 0.0
 
 
 def _calibrate_prediction(pred: PredictionOutput, model_path: Path) -> PredictionOutput:
@@ -130,7 +180,7 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     df = load_feature_dataset(settings, target, timeframe=tf)
 
     # 1. Quant Signals (with fallback — never blocks inference)
-    q_data = _fetch_quant_signals_safe(settings, target)
+    q_data = _fetch_quant_signals_safe(settings, target, df)
 
     # 2. Load models
     trend = _load_model_and_path("trend", target, timeframe=tf)
@@ -178,6 +228,10 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
             fallback=regime_str,
         )
 
+    # 4.1 Volatility crisis mode override
+    vol_mode, realised_vol = _detect_volatility_mode(settings, df)
+    effective_regime = "CRISIS_HIGH_VOL" if vol_mode == "CRISIS_HIGH_VOL" else regime_str
+
     # 5. Meta-model Filter
     meta_model = MetaModel()
     meta_path = settings.models_dir / "meta" / target.replace("/", "_")
@@ -197,24 +251,39 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     safe_symbol = target.replace("/", "_")
     risk_state_store = RiskStateStore(settings.logs_dir / f"risk_state_{safe_symbol}.json")
     state = risk_state_store.load(initial_equity=settings.initial_equity)
-    risk_decision = risk_engine.evaluate(merged, regime_str, state)
+    risk_decision = risk_engine.evaluate(merged, effective_regime, state)
     risk_state_store.save(state)
 
     engine = DecisionEngine()
     price = float(df["close"].iloc[-1])
-    signal = engine.decide(merged, current_price=price, regime=regime_str)
+    signal = engine.decide(merged, current_price=price, regime=effective_regime)
 
     # Multi-layered blocking logic
     flags = default_flags_store(settings).load()
     blocked_by_operator = flags.is_paused() and signal.action == Action.BUY
     
-    # Meta-model or Risk engine can block the trade
-    blocked = (not risk_decision.allowed) or meta_blocked or blocked_by_operator
+    # Macro + orderbook gate
+    macro_risk_off = float(q_data.get("macro_risk_off_score", 0.5))
+    orderbook_imbalance = float(q_data.get("orderbook_imbalance", 0.0))
+    macro_blocked = signal.action == Action.BUY and macro_risk_off >= 0.70
+    orderbook_blocked = signal.action == Action.BUY and orderbook_imbalance <= -0.20
+
+    # Meta-model, risk, macro/orderbook, operator can block the trade
+    blocked = (
+        (not risk_decision.allowed)
+        or meta_blocked
+        or blocked_by_operator
+        or macro_blocked
+        or orderbook_blocked
+    )
 
     decision = _to_contract_decision(signal.action, blocked=blocked)
     confidence = getattr(merged, "confidence", signal.confidence) if not blocked else 0.0
 
-    reason = signal.reason if not blocked else f"Blocked: risk={risk_decision.reason}, meta={meta_blocked}"
+    reason = signal.reason if not blocked else (
+        f"Blocked: risk={risk_decision.reason}, meta={meta_blocked}, "
+        f"macro={macro_blocked}, orderbook={orderbook_blocked}, operator={blocked_by_operator}"
+    )
 
     # Record last trade timestamp for cooldown
     if not blocked and decision != "NO_TRADE":
@@ -230,7 +299,10 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         "decision": decision,
         "confidence": float(confidence),
         "reason": reason,
-        "regime": regime_str,
+        "regime": effective_regime,
+        "regime_base": regime_str,
+        "volatility_mode": vol_mode,
+        "realised_volatility": realised_vol,
         "position_size": float(risk_decision.position_size),
         "risk_allowed": bool(risk_decision.allowed),
         "equity": float(state.equity),

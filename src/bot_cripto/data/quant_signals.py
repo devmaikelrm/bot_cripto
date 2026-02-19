@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import time
-from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import requests
 from filelock import FileLock
@@ -14,17 +15,13 @@ from bot_cripto.core.logging import get_logger
 
 logger = get_logger("data.quant_signals")
 
-# ---------------------------------------------------------------------------
-# Simple in-process cache with TTL (avoids hammering APIs every cycle)
-# ---------------------------------------------------------------------------
-
 _cache: dict[str, tuple[float, float]] = {}  # key -> (value, expire_ts)
 _DEFAULT_TTL = 300.0  # 5 minutes
-_REQUEST_TIMEOUT = 5  # aggressive — fail fast, don't block inference
+_REQUEST_TIMEOUT = 5  # fail fast; never block inference for too long
 
 
 class QuantSignalFetcher:
-    """Fetchers for Funding Rates, Fear & Greed, and other Quant signals."""
+    """Fetchers for funding/sentiment/orderbook/macro quant signals."""
 
     def __init__(self, settings: Settings, cache_ttl: float = _DEFAULT_TTL) -> None:
         self.settings = settings
@@ -46,7 +43,6 @@ class QuantSignalFetcher:
         _cache[key] = (value, time.monotonic() + self.cache_ttl)
 
     def fetch_funding_rate(self, symbol: str = "BTC/USDT") -> float:
-        """Fetch current funding rate from Binance Futures public API."""
         cache_key = f"funding:{symbol}"
         cached = self._cache_get(cache_key)
         if cached is not None:
@@ -57,17 +53,15 @@ class QuantSignalFetcher:
             url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={safe_symbol}"
             response = requests.get(url, timeout=_REQUEST_TIMEOUT)
             response.raise_for_status()
-            data = response.json()
-            rate = float(data.get("lastFundingRate", 0.0))
+            rate = float(response.json().get("lastFundingRate", 0.0))
             logger.info("funding_rate_captured", symbol=symbol, rate=rate)
             self._cache_set(cache_key, rate)
             return rate
         except Exception as exc:
-            logger.warning("funding_rate_fetch_failed", error=str(exc))
+            logger.warning("funding_rate_fetch_failed", symbol=symbol, error=str(exc))
             return 0.0
 
     def fetch_fear_and_greed(self) -> float:
-        """Fetch Fear & Greed Index (0-100, normalised to 0-1)."""
         cache_key = "fng"
         cached = self._cache_get(cache_key)
         if cached is not None:
@@ -77,8 +71,7 @@ class QuantSignalFetcher:
             url = "https://api.alternative.me/fng/"
             response = requests.get(url, timeout=_REQUEST_TIMEOUT)
             response.raise_for_status()
-            data = response.json()
-            value = float(data["data"][0]["value"]) / 100.0
+            value = float(response.json()["data"][0]["value"]) / 100.0
             logger.info("fear_greed_captured", value=value)
             self._cache_set(cache_key, value)
             return value
@@ -87,7 +80,6 @@ class QuantSignalFetcher:
             return 0.5
 
     def fetch_open_interest(self, symbol: str = "BTC/USDT") -> float:
-        """Fetch aggregated open interest (in contracts) from Binance Futures."""
         cache_key = f"oi:{symbol}"
         cached = self._cache_get(cache_key)
         if cached is not None:
@@ -98,20 +90,15 @@ class QuantSignalFetcher:
             url = f"https://fapi.binance.com/fapi/v1/openInterest?symbol={safe_symbol}"
             response = requests.get(url, timeout=_REQUEST_TIMEOUT)
             response.raise_for_status()
-            data = response.json()
-            oi = float(data.get("openInterest", 0.0))
+            oi = float(response.json().get("openInterest", 0.0))
             logger.info("open_interest_captured", symbol=symbol, oi=oi)
             self._cache_set(cache_key, oi)
             return oi
         except Exception as exc:
-            logger.warning("open_interest_fetch_failed", error=str(exc))
+            logger.warning("open_interest_fetch_failed", symbol=symbol, error=str(exc))
             return 0.0
 
     def fetch_long_short_ratio(self, symbol: str = "BTC/USDT") -> float:
-        """Fetch global long/short account ratio from Binance Futures.
-
-        Returns ratio > 1 means more longs, < 1 means more shorts.
-        """
         cache_key = f"lsr:{symbol}"
         cached = self._cache_get(cache_key)
         if cached is not None:
@@ -120,22 +107,167 @@ class QuantSignalFetcher:
         try:
             safe_symbol = symbol.replace("/", "")
             url = (
-                f"https://fapi.binance.com/futures/data/globalLongShortAccountRatio"
+                "https://fapi.binance.com/futures/data/globalLongShortAccountRatio"
                 f"?symbol={safe_symbol}&period=5m&limit=1"
             )
             response = requests.get(url, timeout=_REQUEST_TIMEOUT)
             response.raise_for_status()
             data = response.json()
-            if data:
-                ratio = float(data[0].get("longShortRatio", 1.0))
-            else:
-                ratio = 1.0
+            ratio = float(data[0].get("longShortRatio", 1.0)) if data else 1.0
             logger.info("long_short_ratio_captured", symbol=symbol, ratio=ratio)
             self._cache_set(cache_key, ratio)
             return ratio
         except Exception as exc:
-            logger.warning("long_short_ratio_fetch_failed", error=str(exc))
+            logger.warning("long_short_ratio_fetch_failed", symbol=symbol, error=str(exc))
             return 1.0
+
+    def fetch_orderbook_imbalance(self, symbol: str = "BTC/USDT", depth: int = 50) -> float:
+        """Return imbalance in [-1, 1]: positive => more bids than asks."""
+        cache_key = f"obi:{symbol}:{depth}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            safe_symbol = symbol.replace("/", "")
+            url = f"https://api.binance.com/api/v3/depth?symbol={safe_symbol}&limit={depth}"
+            response = requests.get(url, timeout=_REQUEST_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            bids = data.get("bids", [])
+            asks = data.get("asks", [])
+            bid_qty = float(sum(float(level[1]) for level in bids if len(level) >= 2))
+            ask_qty = float(sum(float(level[1]) for level in asks if len(level) >= 2))
+            total = bid_qty + ask_qty
+            imbalance = 0.0 if total <= 0 else (bid_qty - ask_qty) / total
+            logger.info("orderbook_imbalance_captured", symbol=symbol, depth=depth, imbalance=imbalance)
+            self._cache_set(cache_key, imbalance)
+            return imbalance
+        except Exception as exc:
+            logger.warning("orderbook_imbalance_fetch_failed", symbol=symbol, error=str(exc))
+            return 0.0
+
+    def fetch_social_sentiment(self, symbol: str = "BTC/USDT") -> float:
+        """Read optional sentiment file and normalize to [0,1]."""
+        cache_key = f"social:{symbol}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        path = self.data_dir / f"social_sentiment_{symbol.replace('/', '_')}.json"
+        try:
+            if not path.exists():
+                return 0.5
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            score_raw: float | None = None
+
+            if isinstance(payload, dict) and "score" in payload:
+                score_raw = float(payload["score"])
+            elif isinstance(payload, dict):
+                parts: list[float] = []
+                for key in ("twitter", "telegram", "reddit", "news"):
+                    if key in payload:
+                        parts.append(float(payload[key]))
+                if parts:
+                    score_raw = float(np.mean(parts))
+
+            if score_raw is None:
+                return 0.5
+            if -1.0 <= score_raw <= 1.0:
+                score = (score_raw + 1.0) / 2.0
+            else:
+                score = score_raw
+            score = float(min(1.0, max(0.0, score)))
+            logger.info("social_sentiment_captured", symbol=symbol, score=score)
+            self._cache_set(cache_key, score)
+            return score
+        except Exception as exc:
+            logger.warning("social_sentiment_fetch_failed", symbol=symbol, error=str(exc))
+            return 0.5
+
+    @staticmethod
+    def _fetch_yahoo_closes(ticker: str, interval: str = "1d", range_value: str = "6mo") -> pd.Series:
+        url = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+            f"?interval={interval}&range={range_value}"
+        )
+        response = requests.get(url, timeout=_REQUEST_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()["chart"]["result"][0]
+        closes = data["indicators"]["quote"][0]["close"]
+        timestamps = data["timestamp"]
+        idx = pd.to_datetime(timestamps, unit="s", utc=True)
+        return pd.Series(closes, index=idx, dtype="float64").dropna()
+
+    def fetch_macro_context(self, btc_close: pd.Series) -> dict[str, float]:
+        """Fetch SP500/DXY returns and rolling correlation vs BTC daily returns."""
+        cache_key = "macro_context"
+        spx_ret = self._cache_get(f"{cache_key}:spx_ret")
+        dxy_ret = self._cache_get(f"{cache_key}:dxy_ret")
+        corr_spx = self._cache_get(f"{cache_key}:corr_spx")
+        corr_dxy = self._cache_get(f"{cache_key}:corr_dxy")
+        if spx_ret is not None and dxy_ret is not None and corr_spx is not None and corr_dxy is not None:
+            return {
+                "sp500_ret_1d": spx_ret,
+                "dxy_ret_1d": dxy_ret,
+                "corr_btc_sp500": corr_spx,
+                "corr_btc_dxy": corr_dxy,
+                "macro_risk_off_score": float(max(0.0, min(1.0, (dxy_ret - spx_ret + 0.05) / 0.10))),
+            }
+
+        try:
+            spx = self._fetch_yahoo_closes("^GSPC")
+            dxy = self._fetch_yahoo_closes("DX-Y.NYB")
+
+            btc = btc_close.astype(float).dropna().copy()
+            if not isinstance(btc.index, pd.DatetimeIndex):
+                btc.index = pd.to_datetime(btc.index, utc=True)
+            elif btc.index.tz is None:
+                btc.index = btc.index.tz_localize("UTC")
+            else:
+                btc.index = btc.index.tz_convert("UTC")
+
+            btc_ret = btc.resample("1D").last().pct_change().dropna()
+            spx_ret_series = spx.pct_change().dropna()
+            dxy_ret_series = dxy.pct_change().dropna()
+
+            align_spx = pd.concat([btc_ret, spx_ret_series], axis=1, join="inner").dropna()
+            align_dxy = pd.concat([btc_ret, dxy_ret_series], axis=1, join="inner").dropna()
+
+            corr_btc_sp500 = float(align_spx.iloc[:, 0].corr(align_spx.iloc[:, 1])) if len(align_spx) >= 20 else 0.0
+            corr_btc_dxy = float(align_dxy.iloc[:, 0].corr(align_dxy.iloc[:, 1])) if len(align_dxy) >= 20 else 0.0
+            sp500_ret_1d = float(spx_ret_series.iloc[-1]) if len(spx_ret_series) > 0 else 0.0
+            dxy_ret_1d = float(dxy_ret_series.iloc[-1]) if len(dxy_ret_series) > 0 else 0.0
+            macro_risk_off_score = float(max(0.0, min(1.0, (dxy_ret_1d - sp500_ret_1d + 0.05) / 0.10)))
+
+            self._cache_set(f"{cache_key}:spx_ret", sp500_ret_1d)
+            self._cache_set(f"{cache_key}:dxy_ret", dxy_ret_1d)
+            self._cache_set(f"{cache_key}:corr_spx", corr_btc_sp500)
+            self._cache_set(f"{cache_key}:corr_dxy", corr_btc_dxy)
+            logger.info(
+                "macro_context_captured",
+                sp500_ret_1d=sp500_ret_1d,
+                dxy_ret_1d=dxy_ret_1d,
+                corr_btc_sp500=corr_btc_sp500,
+                corr_btc_dxy=corr_btc_dxy,
+                macro_risk_off_score=macro_risk_off_score,
+            )
+            return {
+                "sp500_ret_1d": sp500_ret_1d,
+                "dxy_ret_1d": dxy_ret_1d,
+                "corr_btc_sp500": corr_btc_sp500,
+                "corr_btc_dxy": corr_btc_dxy,
+                "macro_risk_off_score": macro_risk_off_score,
+            }
+        except Exception as exc:
+            logger.warning("macro_context_fetch_failed", error=str(exc))
+            return {
+                "sp500_ret_1d": 0.0,
+                "dxy_ret_1d": 0.0,
+                "corr_btc_sp500": 0.0,
+                "corr_btc_dxy": 0.0,
+                "macro_risk_off_score": 0.5,
+            }
 
     def save_signals(
         self,
@@ -144,8 +276,15 @@ class QuantSignalFetcher:
         fng: float,
         open_interest: float = 0.0,
         long_short_ratio: float = 1.0,
+        orderbook_imbalance: float = 0.0,
+        social_sentiment: float = 0.5,
+        sp500_ret_1d: float = 0.0,
+        dxy_ret_1d: float = 0.0,
+        corr_btc_sp500: float = 0.0,
+        corr_btc_dxy: float = 0.0,
+        macro_risk_off_score: float = 0.5,
     ) -> None:
-        """Save signals to a parquet file for merging."""
+        """Save signals to parquet for audit/feature merge."""
         path = self.data_dir / f"signals_{symbol.replace('/', '_')}.parquet"
         df = pd.DataFrame(
             {
@@ -153,6 +292,13 @@ class QuantSignalFetcher:
                 "fear_greed": [fng],
                 "open_interest": [open_interest],
                 "long_short_ratio": [long_short_ratio],
+                "orderbook_imbalance": [orderbook_imbalance],
+                "social_sentiment": [social_sentiment],
+                "sp500_ret_1d": [sp500_ret_1d],
+                "dxy_ret_1d": [dxy_ret_1d],
+                "corr_btc_sp500": [corr_btc_sp500],
+                "corr_btc_dxy": [corr_btc_dxy],
+                "macro_risk_off_score": [macro_risk_off_score],
             },
             index=[pd.Timestamp.now(tz="UTC")],
         )
