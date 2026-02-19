@@ -112,6 +112,12 @@ bot-cripto fetch-sentiment --symbol BTC/USDT --source blend
 bot-cripto fetch-sentiment-nlp --symbol BTC/USDT
 ```
 
+Triple-barrier labeling:
+
+```bash
+bot-cripto build-triple-barrier-labels --symbol BTC/USDT --timeframe 5m --pt-mult 2.0 --sl-mult 2.0 --horizon-bars 20
+```
+
 Watchtower dashboard:
 
 ```bash

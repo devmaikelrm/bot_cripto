@@ -281,6 +281,20 @@ Implemented:
 - Compares baseline vs context/sentiment-adjusted signal generation under the same realistic execution-cost model.
 - Outputs JSON with baseline metrics, with-sentiment metrics, and deltas.
 
+## 2026-02-19 Triple-barrier labeling foundation
+
+Status: Completed
+
+Implemented:
+- New labeling module:
+  - `src/bot_cripto/labels/triple_barrier.py`
+  - triple-barrier labels (`tb_label`) + first touch + return at touch
+  - simple purged temporal split helper (`purged_train_test_split`)
+- New CLI command:
+  - `bot-cripto build-triple-barrier-labels --symbol BTC/USDT --timeframe 5m ...`
+- New tests:
+  - `tests/test_triple_barrier.py`
+
 ## Rollback Strategy
 
 If any change degrades behavior:

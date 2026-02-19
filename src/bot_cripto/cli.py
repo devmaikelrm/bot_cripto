@@ -313,6 +313,42 @@ def features(
     typer.echo(f"Rows: {len(processed_df)} cols: {processed_df.shape[1]}")
 
 
+@app.command("build-triple-barrier-labels")
+def build_triple_barrier_labels_cmd(
+    symbol: str | None = typer.Option(None, help="Pair like BTC/USDT"),
+    timeframe: str | None = typer.Option(None, help="Timeframe like 5m, 1h"),
+    pt_mult: float = typer.Option(2.0, help="Profit-take volatility multiplier"),
+    sl_mult: float = typer.Option(2.0, help="Stop-loss volatility multiplier"),
+    horizon_bars: int = typer.Option(20, help="Vertical barrier in bars"),
+    vol_span: int = typer.Option(100, help="EWM volatility span"),
+) -> None:
+    """Build triple-barrier labels on top of processed feature dataset."""
+    from bot_cripto.labels.triple_barrier import TripleBarrierConfig, build_triple_barrier_labels
+
+    settings = get_settings()
+    target_symbol = symbol or settings.symbols_list[0]
+    target_timeframe = timeframe or settings.timeframe
+    safe_symbol = target_symbol.replace("/", "_")
+    input_path = settings.data_dir_processed / f"{safe_symbol}_{target_timeframe}_features.parquet"
+    output_path = settings.data_dir_processed / f"{safe_symbol}_{target_timeframe}_features_tb.parquet"
+    if not input_path.exists():
+        typer.echo(f"Feature dataset not found: {input_path}")
+        raise typer.Exit(code=1)
+
+    df = pd.read_parquet(input_path)
+    cfg = TripleBarrierConfig(
+        pt_mult=pt_mult,
+        sl_mult=sl_mult,
+        horizon_bars=horizon_bars,
+        vol_span=vol_span,
+    )
+    labeled = build_triple_barrier_labels(df, price_col="close", config=cfg)
+    labeled.to_parquet(output_path, compression="snappy")
+    counts = labeled["tb_label"].value_counts().to_dict() if "tb_label" in labeled.columns else {}
+    typer.echo(f"Saved labeled dataset: {output_path}")
+    typer.echo(json.dumps({"label_counts": counts}, indent=2))
+
+
 @app.command()
 def train(
     symbol: str | None = typer.Option(None, help="Pair"),
