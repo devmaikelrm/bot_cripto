@@ -173,6 +173,30 @@ Config/docs:
 Tests:
 - `tests/test_quant_signals.py` extended to cover NLP source routing.
 
+## 2026-02-19 Precision Roadmap Applied (phase 4 - sentiment blend)
+
+Status: Completed
+
+Implemented:
+- Weighted blend in `src/bot_cripto/data/quant_signals.py`:
+  - `x/news/telegram` weights configurable
+  - automatic reweighting when missing sources
+- Temporal stabilization:
+  - EMA smoothing and velocity tracking persisted per symbol
+  - bundle fields exposed to inference payload:
+    - `social_sentiment_raw`
+    - `social_sentiment_velocity`
+    - `social_sentiment_x`
+    - `social_sentiment_news`
+    - `social_sentiment_telegram`
+- Inference integration in `src/bot_cripto/jobs/inference.py` now reads and stores the sentiment bundle.
+
+Config:
+- `SOCIAL_SENTIMENT_WEIGHT_X`
+- `SOCIAL_SENTIMENT_WEIGHT_NEWS`
+- `SOCIAL_SENTIMENT_WEIGHT_TELEGRAM`
+- `SOCIAL_SENTIMENT_EMA_ALPHA`
+
 ## Rollback Strategy
 
 If any change degrades behavior:

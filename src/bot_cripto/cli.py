@@ -216,7 +216,7 @@ def fetch_sentiment(
     symbol: str | None = typer.Option(None, help="Pair like BTC/USDT"),
     source: str | None = typer.Option(
         None,
-        help="Source: auto|nlp|api|x|telegram|cryptopanic|local (overrides SOCIAL_SENTIMENT_SOURCE)",
+        help="Source: auto|blend|nlp|api|x|telegram|cryptopanic|local (overrides SOCIAL_SENTIMENT_SOURCE)",
     ),
 ) -> None:
     """Fetch social sentiment score and print normalized values."""

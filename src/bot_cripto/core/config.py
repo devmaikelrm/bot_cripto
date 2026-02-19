@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     social_sentiment_nlp_enabled: bool = True
     social_sentiment_nlp_model_id: str = "ProsusAI/finbert"
     social_sentiment_nlp_max_texts: Annotated[int, Field(ge=5, le=500)] = 120
+    social_sentiment_weight_x: Annotated[float, Field(ge=0.0, le=1.0)] = 0.5
+    social_sentiment_weight_news: Annotated[float, Field(ge=0.0, le=1.0)] = 0.3
+    social_sentiment_weight_telegram: Annotated[float, Field(ge=0.0, le=1.0)] = 0.2
+    social_sentiment_ema_alpha: Annotated[float, Field(ge=0.01, le=1.0)] = 0.35
     x_bearer_token: str = ""
     x_query_template: str = "({coin} OR ${coin} OR #{coin}) lang:en -is:retweet"
     x_max_results: Annotated[int, Field(ge=10, le=100)] = 50

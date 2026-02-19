@@ -39,11 +39,11 @@ Upgrade sentiment from lexicon-only partial mode to a robust hybrid stack:
 - Quant-signal routing supports `nlp`.
 - Config/env/documentation updates.
 
-2. Phase 2 (next)
-- Add weighted source blend:
+2. Phase 2 (implemented)
+- Weighted source blend:
   - `sent_combined = 0.5*x + 0.3*news + 0.2*telegram`
-- Reweight automatically when sources are missing.
-- Add sentiment velocity and EMA smoothing.
+- Automatic reweight when one or more sources are missing.
+- Sentiment velocity and EMA smoothing (`SOCIAL_SENTIMENT_EMA_ALPHA`).
 
 3. Phase 3 (next)
 - Real-time ingestion with `cryptofeed` for microstructure synchronization.

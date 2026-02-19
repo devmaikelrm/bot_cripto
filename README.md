@@ -95,6 +95,7 @@ Sentiment checks:
 ```bash
 bot-cripto fetch-sentiment --symbol BTC/USDT --source x
 bot-cripto fetch-sentiment --symbol BTC/USDT --source telegram
+bot-cripto fetch-sentiment --symbol BTC/USDT --source blend
 bot-cripto fetch-sentiment-nlp --symbol BTC/USDT
 ```
 
@@ -136,6 +137,10 @@ Main configurable controls in `.env`:
 - `SOCIAL_SENTIMENT_NLP_ENABLED`
 - `SOCIAL_SENTIMENT_NLP_MODEL_ID`
 - `SOCIAL_SENTIMENT_NLP_MAX_TEXTS`
+- `SOCIAL_SENTIMENT_WEIGHT_X`
+- `SOCIAL_SENTIMENT_WEIGHT_NEWS`
+- `SOCIAL_SENTIMENT_WEIGHT_TELEGRAM`
+- `SOCIAL_SENTIMENT_EMA_ALPHA`
 - `X_BEARER_TOKEN`
 - `X_QUERY_TEMPLATE`
 - `X_MAX_RESULTS`

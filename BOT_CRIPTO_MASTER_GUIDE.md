@@ -56,6 +56,8 @@ Estado real al 2026-02-19 (implementación):
 - Implementado:
   - pipeline NLP inicial (`finBERT`) con fallback seguro a léxico.
   - enrutamiento `SOCIAL_SENTIMENT_SOURCE=auto` con prioridad `nlp`.
+  - blend ponderado `x/news/telegram` con reponderación automática.
+  - suavizado temporal por `EMA` y métrica de `velocity`.
   - `fear_greed`.
   - `social_sentiment` por fuente configurable:
     - endpoint externo (`SOCIAL_SENTIMENT_ENDPOINT`)
@@ -65,7 +67,6 @@ Estado real al 2026-02-19 (implementación):
     - archivo local `data/raw/social_sentiment_<SYMBOL>.json`
     - fallback seguro a neutral/FnG
 - Pendiente:
-  - combinar fuentes con pesos dinámicos y suavizado temporal (EMA/velocity).
   - conector de noticias adicionales para cobertura amplia.
 
 2. Orderbook Imbalance
@@ -106,6 +107,10 @@ Estado real al 2026-02-19 (implementación):
 - `SOCIAL_SENTIMENT_NLP_ENABLED`
 - `SOCIAL_SENTIMENT_NLP_MODEL_ID`
 - `SOCIAL_SENTIMENT_NLP_MAX_TEXTS`
+- `SOCIAL_SENTIMENT_WEIGHT_X`
+- `SOCIAL_SENTIMENT_WEIGHT_NEWS`
+- `SOCIAL_SENTIMENT_WEIGHT_TELEGRAM`
+- `SOCIAL_SENTIMENT_EMA_ALPHA`
 - `X_BEARER_TOKEN`
 - `X_QUERY_TEMPLATE`
 - `X_MAX_RESULTS`

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -152,31 +153,38 @@ class QuantSignalFetcher:
             return 0.0
 
     def fetch_social_sentiment(self, symbol: str = "BTC/USDT") -> float:
-        """Read social sentiment using configured source with safe fallbacks.
+        """Return final normalized sentiment in [0,1] used by inference."""
+        bundle = self.fetch_social_sentiment_bundle(symbol=symbol)
+        return float(bundle["social_sentiment"])
 
-        Source order in `auto` mode:
-        1. NLP combined (X + Telegram text if available)
-        2. `SOCIAL_SENTIMENT_ENDPOINT` (expects JSON with score)
-        3. X API (if `X_BEARER_TOKEN` is set)
-        4. Telegram Bot API updates (if `TELEGRAM_BOT_TOKEN` is set)
-        5. CryptoPanic API (if `CRYPTOPANIC_API_KEY` is set)
-        6. local file `data/raw/social_sentiment_<SYMBOL>.json`
-        7. neutral 0.5
-        """
-        cache_key = f"social:{symbol}"
-        cached = self._cache_get(cache_key)
-        if cached is not None:
-            return cached
+    def fetch_social_sentiment_bundle(self, symbol: str = "BTC/USDT") -> dict[str, float]:
+        """Return sentiment bundle with raw/ema/velocity and per-source components."""
+        cache_key = f"social_bundle:{symbol}"
+        cached_sent = self._cache_get(cache_key)
+        if cached_sent is not None:
+            return {
+                "social_sentiment": cached_sent,
+                "social_sentiment_raw": cached_sent,
+                "social_sentiment_velocity": 0.0,
+                "social_sentiment_x": 0.5,
+                "social_sentiment_news": 0.5,
+                "social_sentiment_telegram": 0.5,
+            }
 
         source = (self.settings.social_sentiment_source or "auto").strip().lower()
+
+        # Phase 2 blend: weighted x/news/telegram + automatic reweighting.
+        if source in {"auto", "blend"}:
+            bundle = self._fetch_social_sentiment_blend_bundle(symbol)
+            if bundle is not None:
+                self._cache_set(cache_key, float(bundle["social_sentiment"]))
+                return bundle
+
         source_order = (
             [source]
-            if source in {"nlp", "api", "x", "telegram", "cryptopanic", "local", "auto"}
-            else ["auto"]
+            if source in {"nlp", "api", "x", "telegram", "cryptopanic", "local"}
+            else ["nlp", "api", "x", "telegram", "cryptopanic", "local"]
         )
-        if source == "auto":
-            source_order = ["nlp", "api", "x", "telegram", "cryptopanic", "local"]
-
         for mode in source_order:
             try:
                 if mode == "nlp":
@@ -192,20 +200,68 @@ class QuantSignalFetcher:
                 else:
                     score = self._fetch_social_sentiment_local(symbol)
                 if score is not None:
-                    score = _normalize_sentiment_score(score)
-                    logger.info("social_sentiment_captured", symbol=symbol, source=mode, score=score)
-                    self._cache_set(cache_key, score)
-                    return score
+                    score01 = _normalize_sentiment_score(score)
+                    self._cache_set(cache_key, score01)
+                    return {
+                        "social_sentiment": score01,
+                        "social_sentiment_raw": score01,
+                        "social_sentiment_velocity": 0.0,
+                        "social_sentiment_x": 0.5,
+                        "social_sentiment_news": 0.5,
+                        "social_sentiment_telegram": 0.5,
+                    }
             except Exception as exc:
                 logger.warning("social_sentiment_source_failed", symbol=symbol, source=mode, error=str(exc))
 
-        # last fallback: fear/greed if available
+        # Last fallback: fear/greed.
         try:
-            score = self.fetch_fear_and_greed()
-            self._cache_set(cache_key, score)
-            return score
+            score01 = float(self.fetch_fear_and_greed())
         except Exception:
-            return 0.5
+            score01 = 0.5
+        self._cache_set(cache_key, score01)
+        return {
+            "social_sentiment": score01,
+            "social_sentiment_raw": score01,
+            "social_sentiment_velocity": 0.0,
+            "social_sentiment_x": 0.5,
+            "social_sentiment_news": 0.5,
+            "social_sentiment_telegram": 0.5,
+        }
+
+    def _fetch_social_sentiment_blend_bundle(self, symbol: str) -> dict[str, float] | None:
+        x_signed = self._fetch_social_sentiment_x(symbol)
+        tg_signed = self._fetch_social_sentiment_telegram(symbol)
+        news_signed = self._fetch_social_sentiment_news(symbol)
+
+        weighted_raw = self._weighted_sentiment_signed(
+            x_signed=x_signed,
+            news_signed=news_signed,
+            telegram_signed=tg_signed,
+        )
+        if weighted_raw is None:
+            return None
+
+        raw01 = _normalize_sentiment_score(weighted_raw)
+        ema01, velocity = self._smooth_social_sentiment(symbol=symbol, raw01=raw01)
+        bundle = {
+            "social_sentiment": ema01,
+            "social_sentiment_raw": raw01,
+            "social_sentiment_velocity": velocity,
+            "social_sentiment_x": _normalize_sentiment_score(x_signed) if x_signed is not None else 0.5,
+            "social_sentiment_news": _normalize_sentiment_score(news_signed) if news_signed is not None else 0.5,
+            "social_sentiment_telegram": _normalize_sentiment_score(tg_signed) if tg_signed is not None else 0.5,
+        }
+        logger.info(
+            "social_sentiment_blend_captured",
+            symbol=symbol,
+            social_sentiment=bundle["social_sentiment"],
+            social_sentiment_raw=bundle["social_sentiment_raw"],
+            social_sentiment_velocity=bundle["social_sentiment_velocity"],
+            source_x=bundle["social_sentiment_x"],
+            source_news=bundle["social_sentiment_news"],
+            source_telegram=bundle["social_sentiment_telegram"],
+        )
+        return bundle
 
     def _fetch_social_sentiment_endpoint(self, symbol: str) -> float | None:
         endpoint = (self.settings.social_sentiment_endpoint or "").strip()
@@ -295,6 +351,83 @@ class QuantSignalFetcher:
         scorer = NLPSentimentScorer(self.settings)
         score = scorer.score_texts(texts)
         return score
+
+    def _fetch_social_sentiment_news(self, symbol: str) -> float | None:
+        """News proxy score in [-1,1] using API -> CryptoPanic -> local fallbacks."""
+        try:
+            score = self._fetch_social_sentiment_endpoint(symbol)
+            if score is not None:
+                return score
+        except Exception:
+            pass
+        try:
+            score = self._fetch_social_sentiment_cryptopanic(symbol)
+            if score is not None:
+                return score
+        except Exception:
+            pass
+        try:
+            return self._fetch_social_sentiment_local(symbol)
+        except Exception:
+            return None
+
+    def _weighted_sentiment_signed(
+        self,
+        x_signed: float | None,
+        news_signed: float | None,
+        telegram_signed: float | None,
+    ) -> float | None:
+        weighted_terms: list[tuple[float, float]] = [
+            (float(self.settings.social_sentiment_weight_x), x_signed if x_signed is not None else np.nan),
+            (float(self.settings.social_sentiment_weight_news), news_signed if news_signed is not None else np.nan),
+            (
+                float(self.settings.social_sentiment_weight_telegram),
+                telegram_signed if telegram_signed is not None else np.nan,
+            ),
+        ]
+        valid = [(w, v) for w, v in weighted_terms if not np.isnan(v) and w > 0.0]
+        if not valid:
+            return None
+        total_weight = float(sum(w for w, _ in valid))
+        if total_weight <= 0.0:
+            return None
+        combined = float(sum(w * v for w, v in valid) / total_weight)
+        return float(max(-1.0, min(1.0, combined)))
+
+    def _sentiment_state_path(self, symbol: str) -> Path:
+        safe_symbol = symbol.replace("/", "_")
+        return self.data_dir / f"sentiment_state_{safe_symbol}.json"
+
+    def _load_sentiment_state(self, symbol: str) -> dict[str, float]:
+        path = self._sentiment_state_path(symbol)
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                return {k: float(v) for k, v in payload.items() if isinstance(v, (int, float))}
+            return {}
+        except Exception:
+            return {}
+
+    def _save_sentiment_state(self, symbol: str, ema01: float, raw01: float) -> None:
+        path = self._sentiment_state_path(symbol)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"ema01": float(ema01), "raw01": float(raw01), "ts": pd.Timestamp.now(tz="UTC").timestamp()}
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def _smooth_social_sentiment(self, symbol: str, raw01: float) -> tuple[float, float]:
+        state = self._load_sentiment_state(symbol)
+        prev_ema = state.get("ema01")
+        if prev_ema is None:
+            ema = float(raw01)
+            velocity = 0.0
+        else:
+            alpha = float(self.settings.social_sentiment_ema_alpha)
+            ema = float(alpha * raw01 + (1.0 - alpha) * float(prev_ema))
+            velocity = float(ema - float(prev_ema))
+        self._save_sentiment_state(symbol, ema01=ema, raw01=raw01)
+        return ema, velocity
 
     @staticmethod
     def _fetch_yahoo_closes(ticker: str, interval: str = "1d", range_value: str = "6mo") -> pd.Series:
@@ -389,6 +522,11 @@ class QuantSignalFetcher:
         long_short_ratio: float = 1.0,
         orderbook_imbalance: float = 0.0,
         social_sentiment: float = 0.5,
+        social_sentiment_raw: float = 0.5,
+        social_sentiment_velocity: float = 0.0,
+        social_sentiment_x: float = 0.5,
+        social_sentiment_news: float = 0.5,
+        social_sentiment_telegram: float = 0.5,
         sp500_ret_1d: float = 0.0,
         dxy_ret_1d: float = 0.0,
         corr_btc_sp500: float = 0.0,
@@ -405,6 +543,11 @@ class QuantSignalFetcher:
                 "long_short_ratio": [long_short_ratio],
                 "orderbook_imbalance": [orderbook_imbalance],
                 "social_sentiment": [social_sentiment],
+                "social_sentiment_raw": [social_sentiment_raw],
+                "social_sentiment_velocity": [social_sentiment_velocity],
+                "social_sentiment_x": [social_sentiment_x],
+                "social_sentiment_news": [social_sentiment_news],
+                "social_sentiment_telegram": [social_sentiment_telegram],
                 "sp500_ret_1d": [sp500_ret_1d],
                 "dxy_ret_1d": [dxy_ret_1d],
                 "corr_btc_sp500": [corr_btc_sp500],

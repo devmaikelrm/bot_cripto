@@ -76,3 +76,52 @@ def test_social_sentiment_source_nlp_is_used(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_nlp", lambda symbol: -0.2)
     score = fetcher.fetch_social_sentiment("BTC/USDT")
     assert score == 0.4
+
+
+def test_social_sentiment_blend_reweights_missing_sources(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="blend",
+        social_sentiment_weight_x=0.5,
+        social_sentiment_weight_news=0.3,
+        social_sentiment_weight_telegram=0.2,
+        social_sentiment_ema_alpha=1.0,
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings)
+
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_x", lambda symbol: 0.6)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_news", lambda symbol: -0.2)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_telegram", lambda symbol: None)
+
+    bundle = fetcher.fetch_social_sentiment_bundle("BTC/USDT")
+    # Reweighted: (0.5*0.6 + 0.3*(-0.2)) / 0.8 = 0.3 -> normalized => 0.65
+    assert round(bundle["social_sentiment"], 4) == 0.65
+    assert round(bundle["social_sentiment_raw"], 4) == 0.65
+    assert bundle["social_sentiment_telegram"] == 0.5
+
+
+def test_social_sentiment_blend_ema_and_velocity(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="blend",
+        social_sentiment_ema_alpha=0.5,
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings, cache_ttl=0.0)
+
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_x", lambda symbol: 1.0)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_news", lambda symbol: 0.0)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_telegram", lambda symbol: 0.0)
+    first = fetcher.fetch_social_sentiment_bundle("ETH/USDT")
+    assert first["social_sentiment_velocity"] == 0.0
+
+    qs._cache.clear()
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_x", lambda symbol: -1.0)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_news", lambda symbol: 0.0)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_telegram", lambda symbol: 0.0)
+    second = fetcher.fetch_social_sentiment_bundle("ETH/USDT")
+    assert second["social_sentiment"] < first["social_sentiment"]
+    assert second["social_sentiment_velocity"] < 0.0
