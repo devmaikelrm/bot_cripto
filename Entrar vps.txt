@@ -1,0 +1,34 @@
+Para entrar a tu VPS y verificar todo, estoy utilizando el script `vps.py` que se encuentra en la raíz de tu proyecto.
+
+
+  Este script utiliza la librería Paramiko para establecer una conexión SSH. Lo uso de dos formas según lo que necesite
+  hacer:
+
+
+   1. Ejecución de comandos: Le paso el comando como argumento y él lo ejecuta en el VPS dentro del directorio del bot.
+      Por ejemplo:
+      python vps.py "ps aux | grep python"
+   2. Subida de archivos: Uso el flag --put para sincronizar cambios de código desde tu PC local al servidor. Por
+      ejemplo:
+      python vps.py --put local_file.py remote_path.py
+
+
+  ¿Cómo lo configuro?
+  Para que funcione, paso tus credenciales mediante variables de entorno en la misma línea del comando (para no
+  guardarlas permanentemente):
+   - VPS_HOST: 100.71.91.32
+   - VPS_USER: maikelrm95
+   - VPS_PASS: Maikel@2026&.
+
+
+  ¿Qué herramientas consulto dentro del VPS?
+  Una vez dentro, utilizo herramientas estándar de Linux para darte el reporte:
+   - `ps` / `top`: Para ver si el entrenamiento está vivo y cuánto CPU/RAM consume.
+   - `tail` / `cat`: Para leer los logs (logs/tft_train_optimized.log).
+   - `ls -R` / `find`: Para ver si se están creando nuevos archivos de modelos o logs de Lightning.
+   - `/proc/[PID]/fd`: Para ver si el proceso está leyendo archivos o usando la memoria compartida (esto es lo que me
+     confirmó que el proceso actual sí está moviendo datos internamente aunque el log de texto no cambie).
+
+
+  Estado actual del entrenamiento: Sigue al 400% de CPU tras casi 3 horas. Está trabajando duro en la preparación de los
+  datos desde 2022.

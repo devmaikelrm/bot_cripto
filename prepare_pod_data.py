@@ -2,16 +2,14 @@ import os
 import pandas as pd
 from bot_cripto.core.config import get_settings
 from bot_cripto.data.ingestion import BinanceFetcher
-from bot_cripto.features.engineer import FeatureEngineer
+from bot_cripto.features.engineering import FeaturePipeline
 
 def prepare_coin(symbol="SOL/USDT", timeframe="1h"):
     print(f"--- Preparando {symbol} ({timeframe}) ---")
     settings = get_settings()
     settings.ensure_dirs()
     
-    # 1. Ingestión (calculamos días para unos 17000-18000 registros)
-    # 1h: 17000 / 24 = 708 días
-    # 5m: 17000 / (24*12) = 59 días
+    # 1. Ingestión
     days = 750 if timeframe == "1h" else 65
     
     fetcher = BinanceFetcher(settings)
@@ -25,8 +23,8 @@ def prepare_coin(symbol="SOL/USDT", timeframe="1h"):
     print(f"Datos RAW guardados en: {raw_path}")
     
     # 2. Features
-    engineer = FeatureEngineer()
-    df_features = engineer.generate_all(df_raw)
+    pipeline = FeaturePipeline()
+    df_features = pipeline.transform(df_raw)
     
     # 3. Guardar PROCESSED
     safe_symbol = symbol.replace("/", "_")

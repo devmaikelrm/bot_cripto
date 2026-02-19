@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(VPS_HOST=\"100.71.91.32\" VPS_USER=\"maikelrm95\" VPS_PASS=\"Maikel@2026&.\" python vps.py \"ps aux | grep -i ''train\\\\|tft\\\\|lightning\\\\|pytorch'' | grep -v grep\")",
+      "Bash(VPS_HOST=\"100.71.91.32\" VPS_USER=\"maikelrm95\" VPS_PASS=\"Maikel@2026&.\" python vps.py \"top -bn1 -p 32864 | tail -5\")",
+      "Bash(VPS_HOST=\"100.71.91.32\" VPS_USER=\"maikelrm95\" VPS_PASS=\"Maikel@2026&.\" python vps.py \"tail -80 logs/tft_train_optimized.log 2>/dev/null || echo ''Log vacío o no existe''\")",
+      "Bash(VPS_HOST=\"100.71.91.32\" VPS_USER=\"maikelrm95\" VPS_PASS=\"Maikel@2026&.\" python vps.py \"cat /proc/32864/status 2>/dev/null | grep -E ''Name|State|Threads|VmRSS|VmSize|voluntary''\")",
+      "Bash(python3:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(echo:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

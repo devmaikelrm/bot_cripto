@@ -296,6 +296,11 @@ class BinanceFetcher:
             if path.exists():
                 try:
                     existing = pd.read_parquet(path)
+                    # Force UTC if index is timezone-naive to avoid merge comparison errors
+                    if existing.index.tz is None:
+                        existing.index = existing.index.tz_localize("UTC")
+                    elif str(existing.index.tz) != "UTC":
+                        existing.index = existing.index.tz_convert("UTC")
                 except Exception as exc:
                     # If the parquet was corrupted in a previous run, quarantine it and proceed.
                     ts = pd.Timestamp.utcnow().strftime("%Y%m%dT%H%M%SZ")
