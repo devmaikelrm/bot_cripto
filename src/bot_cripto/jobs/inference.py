@@ -28,6 +28,10 @@ from bot_cripto.risk.state_store import RiskStateStore
 logger = get_logger("jobs.inference")
 
 
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return float(max(lo, min(hi, value)))
+
+
 def _load_model_and_path(
     model_name: str, symbol: str, timeframe: str | None = None
 ) -> tuple[BasePredictor, Path] | None:
@@ -147,6 +151,63 @@ def _detect_volatility_mode(settings: Settings, df: Any) -> tuple[str, float]:
         return "NORMAL", 0.0
 
 
+def _apply_context_adjustments(
+    pred: PredictionOutput,
+    q_data: dict[str, float],
+    settings: Settings,
+) -> tuple[PredictionOutput, dict[str, float]]:
+    """Apply lightweight context adjustment from sentiment/orderbook/macro."""
+    social = _clamp(float(q_data.get("social_sentiment", 0.5)), 0.0, 1.0)
+    orderbook = _clamp(float(q_data.get("orderbook_imbalance", 0.0)), -1.0, 1.0)
+    macro_risk_off = _clamp(float(q_data.get("macro_risk_off_score", 0.5)), 0.0, 1.0)
+    sp500_ret = float(q_data.get("sp500_ret_1d", 0.0))
+    dxy_ret = float(q_data.get("dxy_ret_1d", 0.0))
+    corr_spx = float(q_data.get("corr_btc_sp500", 0.0))
+    corr_dxy = float(q_data.get("corr_btc_dxy", 0.0))
+
+    social_component = (social - 0.5) * 2.0
+    macro_component = (0.5 - macro_risk_off) * 2.0
+
+    corr_component = 0.0
+    if corr_spx > 0.2:
+        corr_component += _clamp(sp500_ret * 20.0, -1.0, 1.0)
+    if corr_dxy < -0.2:
+        corr_component += _clamp((-dxy_ret) * 20.0, -1.0, 1.0)
+    corr_component = _clamp(corr_component / 2.0, -1.0, 1.0)
+
+    context_score = _clamp(
+        (0.35 * social_component)
+        + (0.35 * orderbook)
+        + (0.20 * macro_component)
+        + (0.10 * corr_component),
+        -1.0,
+        1.0,
+    )
+
+    delta_prob = context_score * settings.context_prob_adjust_max
+    adj_prob = _clamp(pred.prob_up + delta_prob, 0.0, 1.0)
+    adj_return = float(pred.expected_return * (1.0 + 0.25 * context_score))
+    adj_risk = _clamp(pred.risk_score * (1.0 - 0.20 * context_score), 0.0, 1.0)
+
+    adjusted = PredictionOutput(
+        prob_up=adj_prob,
+        expected_return=adj_return,
+        p10=pred.p10,
+        p50=pred.p50,
+        p90=pred.p90,
+        risk_score=adj_risk,
+    )
+    debug = {
+        "context_score": context_score,
+        "context_prob_delta": delta_prob,
+        "social_component": social_component,
+        "orderbook_component": orderbook,
+        "macro_component": macro_component,
+        "corr_component": corr_component,
+    }
+    return adjusted, debug
+
+
 def _calibrate_prediction(pred: PredictionOutput, model_path: Path) -> PredictionOutput:
     """Apply probability calibration if a calibrator exists for this model."""
     cal_path = model_path / "calibrator.joblib"
@@ -214,6 +275,10 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         pred_trend, pred_return, pred_risk, nbeats_pred=pred_nbeats
     )
 
+    # 3.1 Context adjustments (sentiment/orderbook/macro)
+    merged_raw = merged
+    merged, context_debug = _apply_context_adjustments(merged_raw, q_data, settings)
+
     # 4. ML Regime Detection (never train during inference)
     regime_engine = MLRegimeEngine()
     regime_path = settings.models_dir / "regime" / target.replace("/", "_")
@@ -238,7 +303,7 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     if (meta_path / "meta_model.joblib").exists():
         meta_model.load(meta_path)
     
-    meta_blocked = meta_model.should_filter(merged.to_dict(), regime_str, q_data)
+    meta_blocked = meta_model.should_filter(merged.to_dict(), effective_regime, q_data)
 
     # 6. Risk & Decision
     risk_engine = RiskEngine(
@@ -265,8 +330,8 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     # Macro + orderbook gate
     macro_risk_off = float(q_data.get("macro_risk_off_score", 0.5))
     orderbook_imbalance = float(q_data.get("orderbook_imbalance", 0.0))
-    macro_blocked = signal.action == Action.BUY and macro_risk_off >= 0.70
-    orderbook_blocked = signal.action == Action.BUY and orderbook_imbalance <= -0.20
+    macro_blocked = signal.action == Action.BUY and macro_risk_off >= settings.macro_block_threshold
+    orderbook_blocked = signal.action == Action.BUY and orderbook_imbalance <= settings.orderbook_sell_wall_threshold
 
     # Meta-model, risk, macro/orderbook, operator can block the trade
     blocked = (
@@ -296,6 +361,9 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         "timeframe": tf,
         "horizon_steps": settings.pred_horizon_steps,
         **merged.to_dict(),
+        "prob_up_model_raw": float(merged_raw.prob_up),
+        "expected_return_model_raw": float(merged_raw.expected_return),
+        "risk_score_model_raw": float(merged_raw.risk_score),
         "decision": decision,
         "confidence": float(confidence),
         "reason": reason,
@@ -307,6 +375,7 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         "risk_allowed": bool(risk_decision.allowed),
         "equity": float(state.equity),
         "quant_signals": q_data,
+        "context_adjustment": context_debug,
         "version": {"model_version": f"{trend_path.name},{ret_path.name}"}
     }
 
@@ -320,7 +389,7 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     notifier = TelegramNotifier(settings=settings)
     notifier.send(
         f"[{'signal' if not blocked else 'inference'}] {target} {decision} "
-        f"regime={regime_str} conf={confidence:.2f} size={payload['position_size']:.3f}"
+        f"regime={effective_regime} conf={confidence:.2f} size={payload['position_size']:.3f}"
     )
     
     return payload

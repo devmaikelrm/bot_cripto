@@ -99,6 +99,34 @@ M3 Advanced optimization (next):
 - performance-driven auto-retrain trigger with cooldown windows
 - full exchange adapter with order idempotency and reconciliation
 
+## 2026-02-19 Precision Roadmap Applied
+
+Status: Completed (phase 1 from `BOT_CRIPTO_MASTER_GUIDE.md`, section 5)
+
+Implemented:
+- Real-time context signals in `src/bot_cripto/data/quant_signals.py`:
+  - `orderbook_imbalance` (Binance depth snapshot)
+  - `social_sentiment` (optional local JSON source)
+  - macro context from SP500 (`^GSPC`) and DXY (`DX-Y.NYB`):
+    - `sp500_ret_1d`, `dxy_ret_1d`
+    - `corr_btc_sp500`, `corr_btc_dxy`
+    - `macro_risk_off_score`
+- Inference context integration in `src/bot_cripto/jobs/inference.py`:
+  - volatility mode override (`CRISIS_HIGH_VOL`) based on realized volatility
+  - context-based probability/return/risk adjustment before final decision
+  - macro/orderbook buy-gating with configurable thresholds
+  - stable signal contract preserved, with added context fields
+- New env-backed controls in `src/bot_cripto/core/config.py` and `.env.example`:
+  - `MACRO_BLOCK_THRESHOLD`
+  - `ORDERBOOK_SELL_WALL_THRESHOLD`
+  - `SOCIAL_SENTIMENT_BULL_MIN`
+  - `SOCIAL_SENTIMENT_BEAR_MAX`
+  - `CONTEXT_PROB_ADJUST_MAX`
+
+Tests:
+- `tests/test_inference_context.py` (new)
+- Existing smoke: `tests/test_ensemble.py`, `tests/test_risk_engine.py`
+
 ## Rollback Strategy
 
 If any change degrades behavior:
@@ -106,4 +134,3 @@ If any change degrades behavior:
 2. Set `SPREAD_BPS=0` and `SLIPPAGE_BPS=0` to recover previous PnL assumptions.
 3. Remove objective specialization by training all jobs with `BaselineModel(objective="multi")`.
 4. Ignore structured performance files and run drift with explicit static history input.
-

@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     fees_bps: Annotated[int, Field(ge=0)] = 10
     regime_adx_trend_min: float = 18.0
     regime_atr_high_vol_pct: float = 0.02
+    macro_block_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.70
+    orderbook_sell_wall_threshold: Annotated[float, Field(ge=-1.0, le=1.0)] = -0.20
+    social_sentiment_bull_min: Annotated[float, Field(ge=0.0, le=1.0)] = 0.60
+    social_sentiment_bear_max: Annotated[float, Field(ge=0.0, le=1.0)] = 0.40
+    context_prob_adjust_max: Annotated[float, Field(ge=0.0, le=0.3)] = 0.05
     risk_per_trade: float = 0.01
     max_daily_drawdown: float = 0.03
     max_weekly_drawdown: float = 0.07
