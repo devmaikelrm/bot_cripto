@@ -63,3 +63,7 @@ class TestSettings:
         )
         assert settings.macro_event_weekdays == [0, 2, 4]
         assert len(settings.macro_event_windows) == 2
+
+    def test_telegram_sentiment_chat_ids_parsing(self) -> None:
+        settings = Settings(telegram_sentiment_chat_ids="-1001, -1002,")
+        assert settings.telegram_sentiment_chat_ids_list == ["-1001", "-1002"]

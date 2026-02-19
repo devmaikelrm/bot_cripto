@@ -12,6 +12,9 @@ from filelock import FileLock
 
 from bot_cripto.core.config import Settings
 from bot_cripto.core.logging import get_logger
+from bot_cripto.data.sentiment_lexicon import score_text
+from bot_cripto.data.sentiment_telegram import TelegramSentimentFetcher
+from bot_cripto.data.sentiment_x import XSentimentFetcher
 
 logger = get_logger("data.quant_signals")
 
@@ -152,9 +155,11 @@ class QuantSignalFetcher:
 
         Source order in `auto` mode:
         1. `SOCIAL_SENTIMENT_ENDPOINT` (expects JSON with score)
-        2. CryptoPanic API (if `CRYPTOPANIC_API_KEY` is set)
-        3. local file `data/raw/social_sentiment_<SYMBOL>.json`
-        4. neutral 0.5
+        2. X API (if `X_BEARER_TOKEN` is set)
+        3. Telegram Bot API updates (if `TELEGRAM_BOT_TOKEN` is set)
+        4. CryptoPanic API (if `CRYPTOPANIC_API_KEY` is set)
+        5. local file `data/raw/social_sentiment_<SYMBOL>.json`
+        6. neutral 0.5
         """
         cache_key = f"social:{symbol}"
         cached = self._cache_get(cache_key)
@@ -164,16 +169,20 @@ class QuantSignalFetcher:
         source = (self.settings.social_sentiment_source or "auto").strip().lower()
         source_order = (
             [source]
-            if source in {"api", "cryptopanic", "local", "auto"}
+            if source in {"api", "x", "telegram", "cryptopanic", "local", "auto"}
             else ["auto"]
         )
         if source == "auto":
-            source_order = ["api", "cryptopanic", "local"]
+            source_order = ["api", "x", "telegram", "cryptopanic", "local"]
 
         for mode in source_order:
             try:
                 if mode == "api":
                     score = self._fetch_social_sentiment_endpoint(symbol)
+                elif mode == "x":
+                    score = self._fetch_social_sentiment_x(symbol)
+                elif mode == "telegram":
+                    score = self._fetch_social_sentiment_telegram(symbol)
                 elif mode == "cryptopanic":
                     score = self._fetch_social_sentiment_cryptopanic(symbol)
                 else:
@@ -247,30 +256,27 @@ class QuantSignalFetcher:
         if not results:
             return None
 
-        positive_words = {
-            "surge", "bull", "bullish", "breakout", "rally", "approval", "adoption", "buy", "up"
-        }
-        negative_words = {
-            "crash", "bear", "bearish", "dump", "selloff", "hack", "ban", "down", "liquidation"
-        }
-
         score_sum = 0.0
         counted = 0
         for item in results[:50]:
             title = str(item.get("title", "")).lower()
             if not title:
                 continue
-            pos = sum(1 for w in positive_words if w in title)
-            neg = sum(1 for w in negative_words if w in title)
-            if pos == 0 and neg == 0:
+            local = score_text(title)
+            if local is None:
                 continue
-            local = (pos - neg) / float(pos + neg)
             score_sum += local
             counted += 1
 
         if counted == 0:
             return None
         return score_sum / float(counted)
+
+    def _fetch_social_sentiment_x(self, symbol: str) -> float | None:
+        return XSentimentFetcher(self.settings).fetch(symbol=symbol)
+
+    def _fetch_social_sentiment_telegram(self, symbol: str) -> float | None:
+        return TelegramSentimentFetcher(self.settings).fetch(symbol=symbol)
 
     @staticmethod
     def _fetch_yahoo_closes(ticker: str, interval: str = "1d", range_value: str = "6mo") -> pd.Series:

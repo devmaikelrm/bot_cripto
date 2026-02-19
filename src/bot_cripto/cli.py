@@ -211,6 +211,32 @@ def fetch_macro(
     typer.echo("Macro data download complete")
 
 
+@app.command("fetch-sentiment")
+def fetch_sentiment(
+    symbol: str | None = typer.Option(None, help="Pair like BTC/USDT"),
+    source: str | None = typer.Option(
+        None,
+        help="Source: auto|api|x|telegram|cryptopanic|local (overrides SOCIAL_SENTIMENT_SOURCE)",
+    ),
+) -> None:
+    """Fetch social sentiment score and print normalized values."""
+    from bot_cripto.data.quant_signals import QuantSignalFetcher
+
+    settings = get_settings()
+    target_symbol = symbol or settings.symbols_list[0]
+    effective_settings = (
+        settings.model_copy(update={"social_sentiment_source": source}) if source else settings
+    )
+    fetcher = QuantSignalFetcher(effective_settings)
+    score01 = fetcher.fetch_social_sentiment(target_symbol)
+    score11 = (score01 * 2.0) - 1.0
+
+    typer.echo(f"Symbol: {target_symbol}")
+    typer.echo(f"Source: {effective_settings.social_sentiment_source}")
+    typer.echo(f"Score [0,1]: {score01:.4f}")
+    typer.echo(f"Score [-1,1]: {score11:.4f}")
+
+
 @app.command()
 def features(
     symbol: str | None = typer.Option(None, help="Pair like BTC/USDT"),

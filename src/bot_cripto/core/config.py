@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     social_sentiment_source: str = "auto"
     social_sentiment_endpoint: str = ""
     cryptopanic_api_key: str = ""
+    x_bearer_token: str = ""
+    x_query_template: str = "({coin} OR ${coin} OR #{coin}) lang:en -is:retweet"
+    x_max_results: Annotated[int, Field(ge=10, le=100)] = 50
+    telegram_sentiment_chat_ids: str = ""
+    telegram_sentiment_lookback_limit: Annotated[int, Field(ge=10, le=500)] = 100
     risk_per_trade: float = 0.01
     max_daily_drawdown: float = 0.03
     max_weekly_drawdown: float = 0.07
@@ -143,6 +148,11 @@ class Settings(BaseSettings):
     def telegram_allowed_chat_ids_list(self) -> list[str]:
         """Parse TELEGRAM_ALLOWED_CHAT_IDS comma-separated list (keep as strings)."""
         return [s.strip() for s in self.telegram_allowed_chat_ids.split(",") if s.strip()]
+
+    @property
+    def telegram_sentiment_chat_ids_list(self) -> list[str]:
+        """Parse TELEGRAM_SENTIMENT_CHAT_IDS comma-separated list."""
+        return [s.strip() for s in self.telegram_sentiment_chat_ids.split(",") if s.strip()]
 
     @property
     def fees_decimal(self) -> float:
