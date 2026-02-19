@@ -1,0 +1,69 @@
+{"event": "telegram_sent", "logger": "notifications.telegram", "level": "info", "timestamp": "2026-02-19T00:45:30.871904Z"}
+{"rows": 18701, "event": "iniciando_entrenamiento_tft_mejorado_4090", "logger": "models.tft", "level": "info", "timestamp": "2026-02-19T00:45:31.029221Z"}
+INFO: Using bfloat16 Automatic Mixed Precision (AMP)
+{"event": "Using bfloat16 Automatic Mixed Precision (AMP)"}
+INFO: GPU available: True (cuda), used: True
+{"event": "GPU available: True (cuda), used: True"}
+INFO: TPU available: False, using: 0 TPU cores
+{"event": "TPU available: False, using: 0 TPU cores"}
+/usr/local/lib/python3.11/dist-packages/lightning/pytorch/trainer/connectors/logger_connector/logger_connector.py:76: Starting from v1.9.0, `tensorboardX` has been removed as a dependency of the `lightning.pytorch` package, due to potential conflicts with other packages in the ML ecosystem. For this reason, `logger=True` will use `CSVLogger` as the default logger, unless the `tensorboard` or `tensorboardX` packages are found. Please `pip install lightning[extra]` or one of them to enable TensorBoard support by default
+INFO: 💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+{"event": "\ud83d\udca1 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform."}
+INFO: 💡 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry.
+{"event": "\ud83d\udca1 Tip: For seamless cloud uploads and versioning, try installing [litmodels](https://pypi.org/project/litmodels/) to enable LitModelCheckpoint, which syncs automatically with the Lightning model registry."}
+INFO: LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+{"event": "LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]"}
+/usr/local/lib/python3.11/dist-packages/lightning/pytorch/utilities/model_summary/model_summary.py:242: Precision bf16-mixed is not supported by the model summary.  Estimated model size in MB will not be accurate. Using 32 bits instead.
+┏━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━┓
+┃    ┃ Name                               ┃ Type      ┃ Params ┃ Mode  ┃ FLOPs ┃
+┡━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━┩
+│ 0  │ loss                               │ Quantile… │      0 │ train │     0 │
+│ 1  │ logging_metrics                    │ ModuleLi… │      0 │ train │     0 │
+│ 2  │ input_embeddings                   │ MultiEmb… │      0 │ train │     0 │
+│ 3  │ prescalers                         │ ModuleDi… │  4.1 K │ train │     0 │
+│ 4  │ static_variable_selection          │ Variable… │ 90.8 K │ train │     0 │
+│ 5  │ encoder_variable_selection         │ Variable… │  932 K │ train │     0 │
+│ 6  │ decoder_variable_selection         │ Variable… │ 91.3 K │ train │     0 │
+│ 7  │ static_context_variable_selection  │ GatedRes… │  103 K │ train │     0 │
+│ 8  │ static_context_initial_hidden_lstm │ GatedRes… │  103 K │ train │     0 │
+│ 9  │ static_context_initial_cell_lstm   │ GatedRes… │  103 K │ train │     0 │
+│ 10 │ static_context_enrichment          │ GatedRes… │  103 K │ train │     0 │
+│ 11 │ lstm_encoder                       │ LSTM      │  824 K │ train │     0 │
+│ 12 │ lstm_decoder                       │ LSTM      │  824 K │ train │     0 │
+│ 13 │ post_lstm_gate_encoder             │ GatedLin… │ 51.5 K │ train │     0 │
+│ 14 │ post_lstm_add_norm_encoder         │ AddNorm   │    320 │ train │     0 │
+│ 15 │ static_enrichment                  │ GatedRes… │  128 K │ train │     0 │
+│ 16 │ multihead_attn                     │ Interpre… │ 57.9 K │ train │     0 │
+│ 17 │ post_attn_gate_norm                │ GateAddN… │ 51.8 K │ train │     0 │
+│ 18 │ pos_wise_ff                        │ GatedRes… │  103 K │ train │     0 │
+│ 19 │ pre_output_gate_norm               │ GateAddN… │ 51.8 K │ train │     0 │
+│ 20 │ output_layer                       │ Linear    │    483 │ train │     0 │
+└────┴────────────────────────────────────┴───────────┴────────┴───────┴───────┘
+Trainable params: 3.6 M                                                         
+Non-trainable params: 0                                                         
+Total params: 3.6 M                                                             
+Total estimated model params size (MB): 14                                      
+Modules in train mode: 691                                                      
+Modules in eval mode: 0                                                         
+Total FLOPs: 0                                                                  
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s]Sanity Checking DataLoader 0: 100%|██████████| 1/1 [00:00<00:00,  1.77it/s]                                                                           Training: |          | 0/? [00:00<?, ?it/s]Training: |          | 0/? [00:00<?, ?it/s]Epoch 0:   0%|          | 0/14 [00:00<?, ?it/s]Epoch 0:  36%|███▌      | 5/14 [00:12<00:21,  0.42it/s]Epoch 0:  36%|███▌      | 5/14 [00:12<00:22,  0.40it/s, v_num=6, train_loss_step=5.510]Epoch 0:  71%|███████▏  | 10/14 [00:24<00:09,  0.41it/s, v_num=6, train_loss_step=5.510]Epoch 0:  71%|███████▏  | 10/14 [00:24<00:09,  0.40it/s, v_num=6, train_loss_step=3.960]Epoch 0: 100%|██████████| 14/14 [00:33<00:00,  0.41it/s, v_num=6, train_loss_step=3.960]Epoch 0: 100%|██████████| 14/14 [00:34<00:00,  0.41it/s, v_num=6, train_loss_step=3.090]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 20.75it/s][A
+                                                                      [AEpoch 0: 100%|██████████| 14/14 [00:34<00:00,  0.40it/s, v_num=6, train_loss_step=3.090, val_loss=17.60]Epoch 0: 100%|██████████| 14/14 [00:34<00:00,  0.40it/s, v_num=6, train_loss_step=3.090, val_loss=17.60, train_loss_epoch=5.300]Epoch 0:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=3.090, val_loss=17.60, train_loss_epoch=5.300]         Epoch 1:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=3.090, val_loss=17.60, train_loss_epoch=5.300]Epoch 1:  36%|███▌      | 5/14 [00:12<00:22,  0.40it/s, v_num=6, train_loss_step=3.090, val_loss=17.60, train_loss_epoch=5.300]Epoch 1:  36%|███▌      | 5/14 [00:13<00:23,  0.38it/s, v_num=6, train_loss_step=1.890, val_loss=17.60, train_loss_epoch=5.300]Epoch 1:  71%|███████▏  | 10/14 [00:24<00:09,  0.41it/s, v_num=6, train_loss_step=1.890, val_loss=17.60, train_loss_epoch=5.300]Epoch 1:  71%|███████▏  | 10/14 [00:25<00:10,  0.40it/s, v_num=6, train_loss_step=1.550, val_loss=17.60, train_loss_epoch=5.300]Epoch 1: 100%|██████████| 14/14 [00:34<00:00,  0.41it/s, v_num=6, train_loss_step=1.550, val_loss=17.60, train_loss_epoch=5.300]Epoch 1: 100%|██████████| 14/14 [00:34<00:00,  0.40it/s, v_num=6, train_loss_step=1.220, val_loss=17.60, train_loss_epoch=5.300]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.04it/s][A
+                                                                      [AEpoch 1: 100%|██████████| 14/14 [00:35<00:00,  0.39it/s, v_num=6, train_loss_step=1.220, val_loss=3.950, train_loss_epoch=5.300]Epoch 1: 100%|██████████| 14/14 [00:35<00:00,  0.39it/s, v_num=6, train_loss_step=1.220, val_loss=3.950, train_loss_epoch=1.910]Epoch 1:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=1.220, val_loss=3.950, train_loss_epoch=1.910]         Epoch 2:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=1.220, val_loss=3.950, train_loss_epoch=1.910]Epoch 2:  36%|███▌      | 5/14 [00:12<00:22,  0.40it/s, v_num=6, train_loss_step=1.220, val_loss=3.950, train_loss_epoch=1.910]Epoch 2:  36%|███▌      | 5/14 [00:12<00:23,  0.39it/s, v_num=6, train_loss_step=1.010, val_loss=3.950, train_loss_epoch=1.910]Epoch 2:  71%|███████▏  | 10/14 [00:24<00:09,  0.41it/s, v_num=6, train_loss_step=1.010, val_loss=3.950, train_loss_epoch=1.910]Epoch 2:  71%|███████▏  | 10/14 [00:25<00:10,  0.40it/s, v_num=6, train_loss_step=1.050, val_loss=3.950, train_loss_epoch=1.910]Epoch 2: 100%|██████████| 14/14 [00:34<00:00,  0.41it/s, v_num=6, train_loss_step=1.050, val_loss=3.950, train_loss_epoch=1.910]Epoch 2: 100%|██████████| 14/14 [00:34<00:00,  0.40it/s, v_num=6, train_loss_step=0.975, val_loss=3.950, train_loss_epoch=1.910]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.01it/s][A
+                                                                      [AEpoch 2: 100%|██████████| 14/14 [00:35<00:00,  0.40it/s, v_num=6, train_loss_step=0.975, val_loss=2.980, train_loss_epoch=1.910]Epoch 2: 100%|██████████| 14/14 [00:35<00:00,  0.40it/s, v_num=6, train_loss_step=0.975, val_loss=2.980, train_loss_epoch=1.060]Epoch 2:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=0.975, val_loss=2.980, train_loss_epoch=1.060]         Epoch 3:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=0.975, val_loss=2.980, train_loss_epoch=1.060]Epoch 3:  36%|███▌      | 5/14 [00:12<00:22,  0.40it/s, v_num=6, train_loss_step=0.975, val_loss=2.980, train_loss_epoch=1.060]Epoch 3:  36%|███▌      | 5/14 [00:12<00:23,  0.39it/s, v_num=6, train_loss_step=0.876, val_loss=2.980, train_loss_epoch=1.060]Epoch 3:  71%|███████▏  | 10/14 [00:24<00:09,  0.41it/s, v_num=6, train_loss_step=0.876, val_loss=2.980, train_loss_epoch=1.060]Epoch 3:  71%|███████▏  | 10/14 [00:25<00:10,  0.40it/s, v_num=6, train_loss_step=0.814, val_loss=2.980, train_loss_epoch=1.060]Epoch 3: 100%|██████████| 14/14 [00:34<00:00,  0.41it/s, v_num=6, train_loss_step=0.814, val_loss=2.980, train_loss_epoch=1.060]Epoch 3: 100%|██████████| 14/14 [00:34<00:00,  0.40it/s, v_num=6, train_loss_step=0.885, val_loss=2.980, train_loss_epoch=1.060]
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation: |          | 0/? [00:00<?, ?it/s][A
+Validation DataLoader 0:   0%|          | 0/1 [00:00<?, ?it/s][A
+Validation DataLoader 0: 100%|██████████| 1/1 [00:00<00:00, 21.38it/s][A
+                                                                      [AEpoch 3: 100%|██████████| 14/14 [00:35<00:00,  0.40it/s, v_num=6, train_loss_step=0.885, val_loss=1.440, train_loss_epoch=1.060]Epoch 3: 100%|██████████| 14/14 [00:35<00:00,  0.40it/s, v_num=6, train_loss_step=0.885, val_loss=1.440, train_loss_epoch=0.898]Epoch 3:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=0.885, val_loss=1.440, train_loss_epoch=0.898]         Epoch 4:   0%|          | 0/14 [00:00<?, ?it/s, v_num=6, train_loss_step=0.885, val_loss=1.440, train_loss_epoch=0.898]Epoch 4:  36%|███▌      | 5/14 [00:12<00:22,  0.40it/s, v_num=6, train_loss_step=0.885, val_loss=1.440, train_loss_epoch=0.898]Epoch 4:  36%|███▌      | 5/14 [00:12<00:23,  0.39it/s, v_num=6, train_loss_step=0.650, val_loss=1.440, train_loss_epoch=0.898]
