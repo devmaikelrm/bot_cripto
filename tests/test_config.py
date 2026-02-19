@@ -55,3 +55,11 @@ class TestSettings:
         assert settings.data_dir_processed.exists()
         assert settings.models_dir.exists()
         assert settings.logs_dir.exists()
+
+    def test_macro_event_parsing(self) -> None:
+        settings = Settings(
+            macro_event_crisis_windows_utc="13:20-14:10,23:30-00:30",
+            macro_event_crisis_weekdays="0,2,4",
+        )
+        assert settings.macro_event_weekdays == [0, 2, 4]
+        assert len(settings.macro_event_windows) == 2

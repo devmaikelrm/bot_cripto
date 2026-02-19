@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
+from datetime import time
 from typing import Annotated
 
 from pydantic import Field
@@ -57,11 +58,17 @@ class Settings(BaseSettings):
     fees_bps: Annotated[int, Field(ge=0)] = 10
     regime_adx_trend_min: float = 18.0
     regime_atr_high_vol_pct: float = 0.02
+    macro_event_crisis_enabled: bool = True
+    macro_event_crisis_windows_utc: str = "13:20-14:10"
+    macro_event_crisis_weekdays: str = "0,1,2,3,4"
     macro_block_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.70
     orderbook_sell_wall_threshold: Annotated[float, Field(ge=-1.0, le=1.0)] = -0.20
     social_sentiment_bull_min: Annotated[float, Field(ge=0.0, le=1.0)] = 0.60
     social_sentiment_bear_max: Annotated[float, Field(ge=0.0, le=1.0)] = 0.40
     context_prob_adjust_max: Annotated[float, Field(ge=0.0, le=0.3)] = 0.05
+    social_sentiment_source: str = "auto"
+    social_sentiment_endpoint: str = ""
+    cryptopanic_api_key: str = ""
     risk_per_trade: float = 0.01
     max_daily_drawdown: float = 0.03
     max_weekly_drawdown: float = 0.07
@@ -96,6 +103,41 @@ class Settings(BaseSettings):
     def symbols_list(self) -> list[str]:
         """Parse SYMBOLS comma-separated list."""
         return [s.strip() for s in self.symbols.split(",") if s.strip()]
+
+    @property
+    def macro_event_weekdays(self) -> list[int]:
+        """Parse weekday list for macro event crisis windows (0=Mon ... 6=Sun)."""
+        out: list[int] = []
+        for raw in self.macro_event_crisis_weekdays.split(","):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                day = int(raw)
+            except ValueError:
+                continue
+            if 0 <= day <= 6:
+                out.append(day)
+        return out or [0, 1, 2, 3, 4]
+
+    @property
+    def macro_event_windows(self) -> list[tuple[time, time]]:
+        """Parse UTC windows from HH:MM-HH:MM comma-separated format."""
+        windows: list[tuple[time, time]] = []
+        for part in self.macro_event_crisis_windows_utc.split(","):
+            part = part.strip()
+            if not part or "-" not in part:
+                continue
+            left, right = part.split("-", 1)
+            try:
+                sh, sm = left.strip().split(":")
+                eh, em = right.strip().split(":")
+                start = time(hour=int(sh), minute=int(sm))
+                end = time(hour=int(eh), minute=int(em))
+                windows.append((start, end))
+            except Exception:
+                continue
+        return windows
 
     @property
     def telegram_allowed_chat_ids_list(self) -> list[str]:

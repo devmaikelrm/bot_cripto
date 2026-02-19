@@ -127,6 +127,28 @@ Tests:
 - `tests/test_inference_context.py` (new)
 - Existing smoke: `tests/test_ensemble.py`, `tests/test_risk_engine.py`
 
+## 2026-02-19 Precision Roadmap Applied (phase 2)
+
+Status: Completed
+
+Implemented:
+- Social sentiment source routing with fallback order:
+  - configurable API endpoint (`SOCIAL_SENTIMENT_ENDPOINT`)
+  - CryptoPanic headlines (`CRYPTOPANIC_API_KEY`)
+  - local JSON sentiment file
+  - neutral/Fear&Greed fallback
+- Macro-event crisis windows in inference:
+  - `MACRO_EVENT_CRISIS_ENABLED`
+  - `MACRO_EVENT_CRISIS_WINDOWS_UTC` (UTC ranges, comma-separated)
+  - `MACRO_EVENT_CRISIS_WEEKDAYS` (0=Mon ... 6=Sun)
+  - when active, `effective_regime` is forced to `CRISIS_HIGH_VOL`
+- Extended signal payload auditing fields:
+  - `macro_event_mode`
+
+Tests:
+- `tests/test_inference_context.py` updated with macro-window checks.
+- `tests/test_config.py` updated for macro-window parsing.
+
 ## Rollback Strategy
 
 If any change degrades behavior:

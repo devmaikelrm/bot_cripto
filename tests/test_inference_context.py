@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from bot_cripto.core.config import Settings
-from bot_cripto.jobs.inference import _apply_context_adjustments
+from bot_cripto.jobs.inference import _apply_context_adjustments, _is_macro_event_window
 from bot_cripto.models.base import PredictionOutput
 
 
@@ -75,3 +77,25 @@ def test_context_adjustments_clamp_prob_range() -> None:
     }
     adjusted, _ = _apply_context_adjustments(pred, q_data, settings)
     assert 0.0 <= adjusted.prob_up <= 1.0
+
+
+def test_macro_event_window_active() -> None:
+    settings = Settings(
+        macro_event_crisis_enabled=True,
+        macro_event_crisis_windows_utc="13:20-14:10",
+        macro_event_crisis_weekdays="0,1,2,3,4",
+    )
+    # Wednesday 13:30 UTC
+    now = datetime(2026, 2, 18, 13, 30, tzinfo=UTC)
+    assert _is_macro_event_window(settings, now) is True
+
+
+def test_macro_event_window_inactive_outside_time() -> None:
+    settings = Settings(
+        macro_event_crisis_enabled=True,
+        macro_event_crisis_windows_utc="13:20-14:10",
+        macro_event_crisis_weekdays="0,1,2,3,4",
+    )
+    # Wednesday 15:00 UTC
+    now = datetime(2026, 2, 18, 15, 0, tzinfo=UTC)
+    assert _is_macro_event_window(settings, now) is False

@@ -148,42 +148,129 @@ class QuantSignalFetcher:
             return 0.0
 
     def fetch_social_sentiment(self, symbol: str = "BTC/USDT") -> float:
-        """Read optional sentiment file and normalize to [0,1]."""
+        """Read social sentiment using configured source with safe fallbacks.
+
+        Source order in `auto` mode:
+        1. `SOCIAL_SENTIMENT_ENDPOINT` (expects JSON with score)
+        2. CryptoPanic API (if `CRYPTOPANIC_API_KEY` is set)
+        3. local file `data/raw/social_sentiment_<SYMBOL>.json`
+        4. neutral 0.5
+        """
         cache_key = f"social:{symbol}"
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
 
-        path = self.data_dir / f"social_sentiment_{symbol.replace('/', '_')}.json"
+        source = (self.settings.social_sentiment_source or "auto").strip().lower()
+        source_order = (
+            [source]
+            if source in {"api", "cryptopanic", "local", "auto"}
+            else ["auto"]
+        )
+        if source == "auto":
+            source_order = ["api", "cryptopanic", "local"]
+
+        for mode in source_order:
+            try:
+                if mode == "api":
+                    score = self._fetch_social_sentiment_endpoint(symbol)
+                elif mode == "cryptopanic":
+                    score = self._fetch_social_sentiment_cryptopanic(symbol)
+                else:
+                    score = self._fetch_social_sentiment_local(symbol)
+                if score is not None:
+                    score = _normalize_sentiment_score(score)
+                    logger.info("social_sentiment_captured", symbol=symbol, source=mode, score=score)
+                    self._cache_set(cache_key, score)
+                    return score
+            except Exception as exc:
+                logger.warning("social_sentiment_source_failed", symbol=symbol, source=mode, error=str(exc))
+
+        # last fallback: fear/greed if available
         try:
-            if not path.exists():
-                return 0.5
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            score_raw: float | None = None
-
-            if isinstance(payload, dict) and "score" in payload:
-                score_raw = float(payload["score"])
-            elif isinstance(payload, dict):
-                parts: list[float] = []
-                for key in ("twitter", "telegram", "reddit", "news"):
-                    if key in payload:
-                        parts.append(float(payload[key]))
-                if parts:
-                    score_raw = float(np.mean(parts))
-
-            if score_raw is None:
-                return 0.5
-            if -1.0 <= score_raw <= 1.0:
-                score = (score_raw + 1.0) / 2.0
-            else:
-                score = score_raw
-            score = float(min(1.0, max(0.0, score)))
-            logger.info("social_sentiment_captured", symbol=symbol, score=score)
+            score = self.fetch_fear_and_greed()
             self._cache_set(cache_key, score)
             return score
-        except Exception as exc:
-            logger.warning("social_sentiment_fetch_failed", symbol=symbol, error=str(exc))
+        except Exception:
             return 0.5
+
+    def _fetch_social_sentiment_endpoint(self, symbol: str) -> float | None:
+        endpoint = (self.settings.social_sentiment_endpoint or "").strip()
+        if not endpoint:
+            return None
+        url = endpoint
+        if "{symbol}" in endpoint:
+            url = endpoint.replace("{symbol}", symbol.replace("/", "_"))
+        response = requests.get(url, timeout=_REQUEST_TIMEOUT)
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, dict) and "score" in payload:
+            return float(payload["score"])
+        if isinstance(payload, dict):
+            values: list[float] = []
+            for key in ("twitter", "telegram", "reddit", "news", "sentiment"):
+                if key in payload:
+                    values.append(float(payload[key]))
+            if values:
+                return float(np.mean(values))
+        return None
+
+    def _fetch_social_sentiment_local(self, symbol: str) -> float | None:
+        path = self.data_dir / f"social_sentiment_{symbol.replace('/', '_')}.json"
+        if not path.exists():
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and "score" in payload:
+            return float(payload["score"])
+        if isinstance(payload, dict):
+            values: list[float] = []
+            for key in ("twitter", "telegram", "reddit", "news"):
+                if key in payload:
+                    values.append(float(payload[key]))
+            if values:
+                return float(np.mean(values))
+        return None
+
+    def _fetch_social_sentiment_cryptopanic(self, symbol: str) -> float | None:
+        key = (self.settings.cryptopanic_api_key or "").strip()
+        if not key:
+            return None
+        coin = symbol.split("/")[0].upper()
+        url = (
+            "https://cryptopanic.com/api/developer/v2/posts/"
+            f"?auth_token={key}&currencies={coin}&public=true&kind=news"
+        )
+        response = requests.get(url, timeout=_REQUEST_TIMEOUT)
+        response.raise_for_status()
+        payload = response.json()
+        results = payload.get("results", [])
+        if not results:
+            return None
+
+        positive_words = {
+            "surge", "bull", "bullish", "breakout", "rally", "approval", "adoption", "buy", "up"
+        }
+        negative_words = {
+            "crash", "bear", "bearish", "dump", "selloff", "hack", "ban", "down", "liquidation"
+        }
+
+        score_sum = 0.0
+        counted = 0
+        for item in results[:50]:
+            title = str(item.get("title", "")).lower()
+            if not title:
+                continue
+            pos = sum(1 for w in positive_words if w in title)
+            neg = sum(1 for w in negative_words if w in title)
+            if pos == 0 and neg == 0:
+                continue
+            local = (pos - neg) / float(pos + neg)
+            score_sum += local
+            counted += 1
+
+        if counted == 0:
+            return None
+        return score_sum / float(counted)
 
     @staticmethod
     def _fetch_yahoo_closes(ticker: str, interval: str = "1d", range_value: str = "6mo") -> pd.Series:
@@ -312,3 +399,11 @@ class QuantSignalFetcher:
                 limit = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=7)
                 df = df[df.index >= limit]
             df.to_parquet(path)
+
+
+def _normalize_sentiment_score(raw: float) -> float:
+    if -1.0 <= raw <= 1.0:
+        score = (raw + 1.0) / 2.0
+    else:
+        score = raw
+    return float(min(1.0, max(0.0, score)))

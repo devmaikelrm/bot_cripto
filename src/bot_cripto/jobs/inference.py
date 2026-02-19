@@ -151,6 +151,22 @@ def _detect_volatility_mode(settings: Settings, df: Any) -> tuple[str, float]:
         return "NORMAL", 0.0
 
 
+def _is_macro_event_window(settings: Settings, now_utc: datetime) -> bool:
+    if not settings.macro_event_crisis_enabled:
+        return False
+    if now_utc.weekday() not in settings.macro_event_weekdays:
+        return False
+    now_t = now_utc.time().replace(second=0, microsecond=0)
+    for start, end in settings.macro_event_windows:
+        if start <= end:
+            if start <= now_t <= end:
+                return True
+        else:
+            if now_t >= start or now_t <= end:
+                return True
+    return False
+
+
 def _apply_context_adjustments(
     pred: PredictionOutput,
     q_data: dict[str, float],
@@ -295,7 +311,12 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
 
     # 4.1 Volatility crisis mode override
     vol_mode, realised_vol = _detect_volatility_mode(settings, df)
-    effective_regime = "CRISIS_HIGH_VOL" if vol_mode == "CRISIS_HIGH_VOL" else regime_str
+    macro_event_mode = _is_macro_event_window(settings, datetime.now(tz=UTC))
+    effective_regime = (
+        "CRISIS_HIGH_VOL"
+        if (vol_mode == "CRISIS_HIGH_VOL" or macro_event_mode)
+        else regime_str
+    )
 
     # 5. Meta-model Filter
     meta_model = MetaModel()
@@ -370,6 +391,7 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         "regime": effective_regime,
         "regime_base": regime_str,
         "volatility_mode": vol_mode,
+        "macro_event_mode": bool(macro_event_mode),
         "realised_volatility": realised_vol,
         "position_size": float(risk_decision.position_size),
         "risk_allowed": bool(risk_decision.allowed),
