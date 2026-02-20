@@ -48,6 +48,7 @@ class RiskStateStore:
             day_id=str(raw.get("day_id", "")),
             week_id=str(raw.get("week_id", "")),
             last_trade_ts=str(raw.get("last_trade_ts", "")),
+            circuit_breaker_until=str(raw.get("circuit_breaker_until", "")),
         )
 
     def save(self, state: RiskState) -> None:
@@ -58,6 +59,7 @@ class RiskStateStore:
             "day_id": state.day_id,
             "week_id": state.week_id,
             "last_trade_ts": state.last_trade_ts,
+            "circuit_breaker_until": state.circuit_breaker_until,
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_name(self.path.name + f".tmp.{os.getpid()}")

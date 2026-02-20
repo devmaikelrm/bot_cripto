@@ -23,6 +23,24 @@ class TestSettings:
         assert settings.stream_retention_days == 7
         assert settings.social_sentiment_reliability_enabled is True
         assert settings.social_sentiment_reliability_min_weight == 0.10
+        assert settings.social_sentiment_news_rss_enabled is True
+        assert "coindesk.com" in settings.social_sentiment_news_rss_urls
+        assert settings.social_sentiment_news_rss_max_items == 80
+        assert settings.gnews_max_results == 25
+        assert settings.reddit_max_results == 25
+        assert settings.meta_model_enabled is True
+        assert settings.meta_model_min_prob_success == 0.55
+        assert settings.meta_model_holdout_ratio == 0.25
+        assert settings.meta_model_threshold_min == 0.50
+        assert settings.meta_model_threshold_max == 0.80
+        assert settings.meta_model_threshold_step == 0.01
+        assert settings.meta_model_min_positive_predictions == 5
+        assert settings.risk_cvar_enabled is True
+        assert settings.risk_cvar_alpha == 0.05
+        assert settings.risk_cvar_limit == -0.03
+        assert settings.cc_eval_window == 500
+        assert settings.cc_promotion_margin == 0.05
+        assert settings.cc_min_trades == 20
 
     def test_symbols_list(self) -> None:
         """Verifica parsing de symbols comma-separated."""

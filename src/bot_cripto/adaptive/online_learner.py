@@ -30,6 +30,7 @@ import pandas as pd
 
 from bot_cripto.core.config import Settings, get_settings
 from bot_cripto.core.logging import get_logger
+from bot_cripto.adaptive.concept_drift import detect_concept_drift
 from bot_cripto.monitoring.drift import (
     DataDriftReport,
     DriftResult,
@@ -96,6 +97,7 @@ class OnlineLearningSystem:
         perf_ks_alpha: float = 0.05,
         feature_ks_alpha: float = 0.05,
         feature_drift_ratio: float = 0.30,
+        concept_drift_enabled: bool = True,
         last_retrain_path: Path | None = None,
     ) -> None:
         self.settings = settings or get_settings()
@@ -106,6 +108,7 @@ class OnlineLearningSystem:
         self.perf_ks_alpha = perf_ks_alpha
         self.feature_ks_alpha = feature_ks_alpha
         self.feature_drift_ratio = feature_drift_ratio
+        self.concept_drift_enabled = concept_drift_enabled
         self.last_retrain_path = last_retrain_path or (
             self.settings.logs_dir / "last_retrain.txt"
         )
@@ -197,6 +200,28 @@ class OnlineLearningSystem:
             },
         )
 
+    def _check_concept_drift_trigger(self, history: list[float]) -> TriggerResult:
+        if not self.concept_drift_enabled:
+            return TriggerResult(name="concept_drift", fired=False, reason="Concept drift disabled")
+        if len(history) < 60:
+            return TriggerResult(
+                name="concept_drift",
+                fired=False,
+                reason=f"Insufficient history ({len(history)} points, need >= 60)",
+                details={"history_length": len(history)},
+            )
+
+        result = detect_concept_drift(history)
+        return TriggerResult(
+            name="concept_drift",
+            fired=result.drift_detected,
+            reason=(
+                f"backend={result.detector_backend}, adwin={result.adwin_detected}, "
+                f"ph={result.pagehinkley_detected}, fallback={result.fallback_detected}"
+            ),
+            details=result.details,
+        )
+
     # ------------------------------------------------------------------
     # Trigger 3: Feature / data drift
     # ------------------------------------------------------------------
@@ -277,6 +302,7 @@ class OnlineLearningSystem:
         # 2. Performance trigger
         if performance_history is not None:
             results.append(self._check_performance_trigger(performance_history))
+            results.append(self._check_concept_drift_trigger(performance_history))
 
         # 3. Data drift trigger
         results.append(

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+
+import numpy as np
 
 from bot_cripto.core.logging import get_logger
 from bot_cripto.models.base import PredictionOutput
@@ -23,6 +25,11 @@ class RiskLimits:
     cooldown_minutes: int = 15
     enable_kelly: bool = True
     kelly_fraction: float = 0.2  # Fractional Kelly (safer)
+    cvar_enabled: bool = True
+    cvar_alpha: float = 0.05
+    cvar_min_samples: int = 60
+    cvar_limit: float = -0.03
+    circuit_breaker_minutes: int = 60
 
 
 @dataclass
@@ -33,6 +40,7 @@ class RiskState:
     day_id: str = ""
     week_id: str = ""
     last_trade_ts: str = ""
+    circuit_breaker_until: str = ""
 
 
 @dataclass(frozen=True)
@@ -81,13 +89,37 @@ class RiskEngine:
         kelly_f = (p * b - q) / b
         return max(0.0, kelly_f)
 
+    def _compute_cvar(self, returns: list[float], alpha: float) -> float:
+        """Historical CVaR (Expected Shortfall) on tail losses."""
+        if not returns:
+            return 0.0
+        arr = np.asarray(returns, dtype=float)
+        if arr.size == 0:
+            return 0.0
+        var_q = float(np.quantile(arr, alpha))
+        tail = arr[arr <= var_q]
+        if tail.size == 0:
+            return var_q
+        return float(np.mean(tail))
+
     def evaluate(
         self,
         prediction: PredictionOutput,
         regime_str: str,
         state: RiskState,
+        recent_returns: list[float] | None = None,
     ) -> RiskDecision:
         self._refresh_periods(state)
+
+        now = datetime.now(tz=UTC)
+        if state.circuit_breaker_until:
+            try:
+                until = datetime.fromisoformat(state.circuit_breaker_until)
+                if now < until:
+                    remaining = int((until - now).total_seconds() / 60.0)
+                    return RiskDecision(False, 0.0, f"Circuit breaker active: {remaining}min")
+            except (ValueError, TypeError):
+                state.circuit_breaker_until = ""
 
         daily_dd = self._dd(state.equity, state.day_start_equity)
         weekly_dd = self._dd(state.equity, state.week_start_equity)
@@ -96,6 +128,24 @@ class RiskEngine:
             return RiskDecision(False, 0.0, f"Daily DD limit reached: {daily_dd:.2%}")
         if weekly_dd >= self.limits.max_weekly_drawdown:
             return RiskDecision(False, 0.0, f"Weekly DD limit reached: {weekly_dd:.2%}")
+
+        # CVaR guard on realized recent returns.
+        if (
+            self.limits.cvar_enabled
+            and recent_returns is not None
+            and len(recent_returns) >= self.limits.cvar_min_samples
+        ):
+            cvar = self._compute_cvar(recent_returns, alpha=self.limits.cvar_alpha)
+            if cvar <= self.limits.cvar_limit:
+                if self.limits.circuit_breaker_minutes > 0:
+                    state.circuit_breaker_until = (
+                        now + timedelta(minutes=self.limits.circuit_breaker_minutes)
+                    ).isoformat()
+                return RiskDecision(
+                    False,
+                    0.0,
+                    f"CVaR breach: {cvar:.2%} <= {self.limits.cvar_limit:.2%}",
+                )
 
         # Cooldown: block trades too soon after the last one
         if state.last_trade_ts and self.limits.cooldown_minutes > 0:

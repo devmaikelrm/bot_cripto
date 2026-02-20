@@ -75,6 +75,15 @@ class WatchtowerStore:
                     ok INTEGER NOT NULL
                 )
                 """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS adaptive_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                )
+                """)
             conn.commit()
 
     def log_decision(self, payload: dict[str, Any], latency_ms: float | None = None) -> None:
@@ -140,5 +149,22 @@ class WatchtowerStore:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (ts, provider, symbol, timeframe, float(latency_ms), int(ok)),
+            )
+            conn.commit()
+
+    def log_adaptive_event(
+        self,
+        ts: str,
+        event_type: str,
+        severity: str,
+        payload_json: str,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO adaptive_events (ts, event_type, severity, payload_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (ts, event_type, severity, payload_json),
             )
             conn.commit()

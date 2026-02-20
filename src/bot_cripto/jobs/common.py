@@ -73,6 +73,17 @@ def latest_model_dir(
     return candidates[-1]
 
 
+def model_version_dirs(
+    settings: Settings, model_name: str, symbol: str, timeframe: str | None = None
+) -> list[Path]:
+    """Return sorted version directories for a model/symbol/timeframe."""
+    tf = timeframe or settings.timeframe
+    model_root = settings.models_dir / model_name / safe_symbol(symbol) / tf
+    if not model_root.exists():
+        return []
+    return sorted([p for p in model_root.iterdir() if p.is_dir()], key=lambda p: p.name)
+
+
 def write_signal_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

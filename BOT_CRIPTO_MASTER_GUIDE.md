@@ -52,7 +52,7 @@ Documento de referencia operacional y técnica del proyecto, con foco en entrena
 Estado real al 2026-02-19 (implementación):
 
 1. Análisis de sentimiento en tiempo real
-- Estado: `PARCIAL`
+- Estado: `COMPLETADO`
 - Implementado:
   - pipeline NLP inicial (`finBERT`) con fallback seguro a léxico.
   - enrutamiento `SOCIAL_SENTIMENT_SOURCE=auto` con prioridad `nlp`.
@@ -64,10 +64,9 @@ Estado real al 2026-02-19 (implementación):
     - X nativo (`X_BEARER_TOKEN`)
     - Telegram nativo (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_SENTIMENT_CHAT_IDS`)
     - CryptoPanic (`CRYPTOPANIC_API_KEY`)
+    - RSS news multifuente (`SOCIAL_SENTIMENT_NEWS_RSS_URLS`)
     - archivo local `data/raw/social_sentiment_<SYMBOL>.json`
     - fallback seguro a neutral/FnG
-- Pendiente:
-  - conector de noticias adicionales para cobertura amplia.
 
 2. Orderbook Imbalance
 - Estado: `COMPLETADO`
@@ -115,6 +114,9 @@ Estado real al 2026-02-19 (implementación):
 - `SOCIAL_SENTIMENT_NLP_ENABLED`
 - `SOCIAL_SENTIMENT_NLP_MODEL_ID`
 - `SOCIAL_SENTIMENT_NLP_MAX_TEXTS`
+- `SOCIAL_SENTIMENT_NEWS_RSS_ENABLED`
+- `SOCIAL_SENTIMENT_NEWS_RSS_URLS`
+- `SOCIAL_SENTIMENT_NEWS_RSS_MAX_ITEMS`
 - `SOCIAL_SENTIMENT_WEIGHT_X`
 - `SOCIAL_SENTIMENT_WEIGHT_NEWS`
 - `SOCIAL_SENTIMENT_WEIGHT_TELEGRAM`
@@ -139,3 +141,8 @@ Estado real al 2026-02-19 (implementación):
 1. Al levantar nueva GPU: deploy del repo actualizado y smoke de inferencia.
 2. Activar fuentes reales de sentimiento (X/Telegram/API).
 3. Validar impacto en backtesting walk-forward y drift para recalibrar umbrales.
+   - Implementado: `bot-cripto tune-thresholds --symbol BTC/USDT --timeframe 5m`.
+   - Aplicación automática a `.env`: agregar `--apply-env` (crea backup).
+   - Rollback: `bot-cripto rollback-thresholds-env`.
+4. Champion-Challenger (paper paralelo) para promoción controlada de modelos.
+   - Implementado: `bot-cripto champion-challenger-check --model-name trend --symbol BTC/USDT --timeframe 5m`.

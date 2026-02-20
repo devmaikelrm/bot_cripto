@@ -14,7 +14,10 @@ from filelock import FileLock
 from bot_cripto.core.config import Settings
 from bot_cripto.core.logging import get_logger
 from bot_cripto.data.sentiment_lexicon import score_text
+from bot_cripto.data.sentiment_gnews import GNewsSentimentFetcher
 from bot_cripto.data.sentiment_nlp import NLPSentimentScorer
+from bot_cripto.data.sentiment_reddit import RedditSentimentFetcher
+from bot_cripto.data.sentiment_rss import RSSNewsSentimentFetcher
 from bot_cripto.data.sentiment_telegram import TelegramSentimentFetcher
 from bot_cripto.data.sentiment_x import XSentimentFetcher
 
@@ -82,7 +85,63 @@ class QuantSignalFetcher:
             return value
         except Exception as exc:
             logger.warning("fear_greed_fetch_failed", error=str(exc))
-            return 0.5
+            # Fallback from coingecko/coinpaprika global context.
+            macro = self.fetch_global_market_context()
+            return float(macro.get("market_sentiment_proxy", 0.5))
+
+    def fetch_global_market_context(self) -> dict[str, float]:
+        """Fetch cross-provider global crypto context with resilient fallbacks."""
+        cache_key = "global_market_context"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return {
+                "btc_dominance": cached,
+                "market_sentiment_proxy": max(0.0, min(1.0, 1.0 - cached / 100.0)),
+            }
+
+        # Provider A: CoinGecko (preferred)
+        try:
+            headers = {}
+            if self.settings.coingecko_api_key:
+                headers["x-cg-demo-api-key"] = self.settings.coingecko_api_key
+            response = requests.get(
+                "https://api.coingecko.com/api/v3/global",
+                headers=headers,
+                timeout=_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            payload = response.json().get("data", {})
+            btc_dom = float(payload.get("market_cap_percentage", {}).get("btc", 50.0))
+            self._cache_set(cache_key, btc_dom)
+            return {
+                "btc_dominance": btc_dom,
+                "market_sentiment_proxy": max(0.0, min(1.0, 1.0 - btc_dom / 100.0)),
+            }
+        except Exception as exc:
+            logger.warning("coingecko_global_context_failed", error=str(exc))
+
+        # Provider B: Coinpaprika (secondary)
+        try:
+            headers = {}
+            if self.settings.coinpaprika_api_key:
+                headers["Authorization"] = f"Bearer {self.settings.coinpaprika_api_key}"
+            response = requests.get(
+                "https://api.coinpaprika.com/v1/global",
+                headers=headers,
+                timeout=_REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            btc_dom = float(payload.get("bitcoin_dominance_percentage", 50.0))
+            self._cache_set(cache_key, btc_dom)
+            return {
+                "btc_dominance": btc_dom,
+                "market_sentiment_proxy": max(0.0, min(1.0, 1.0 - btc_dom / 100.0)),
+            }
+        except Exception as exc:
+            logger.warning("coinpaprika_global_context_failed", error=str(exc))
+
+        return {"btc_dominance": 50.0, "market_sentiment_proxy": 0.5}
 
     def fetch_open_interest(self, symbol: str = "BTC/USDT") -> float:
         cache_key = f"oi:{symbol}"
@@ -187,8 +246,8 @@ class QuantSignalFetcher:
 
         source_order = (
             [source]
-            if source in {"nlp", "api", "x", "telegram", "cryptopanic", "local"}
-            else ["nlp", "api", "x", "telegram", "cryptopanic", "local"]
+            if source in {"nlp", "api", "x", "telegram", "cryptopanic", "rss", "gnews", "reddit", "local"}
+            else ["nlp", "api", "x", "telegram", "gnews", "reddit", "cryptopanic", "rss", "local"]
         )
         for mode in source_order:
             try:
@@ -202,6 +261,12 @@ class QuantSignalFetcher:
                     score = self._fetch_social_sentiment_telegram(symbol)
                 elif mode == "cryptopanic":
                     score = self._fetch_social_sentiment_cryptopanic(symbol)
+                elif mode == "rss":
+                    score = self._fetch_social_sentiment_rss(symbol)
+                elif mode == "gnews":
+                    score = self._fetch_social_sentiment_gnews(symbol)
+                elif mode == "reddit":
+                    score = self._fetch_social_sentiment_reddit(symbol)
                 else:
                     score = self._fetch_social_sentiment_local(symbol)
                 if score is not None:
@@ -379,8 +444,17 @@ class QuantSignalFetcher:
         score = scorer.score_texts(texts)
         return score
 
+    def _fetch_social_sentiment_rss(self, symbol: str) -> float | None:
+        return RSSNewsSentimentFetcher(self.settings).fetch(symbol=symbol)
+
+    def _fetch_social_sentiment_gnews(self, symbol: str) -> float | None:
+        return GNewsSentimentFetcher(self.settings).fetch(symbol=symbol)
+
+    def _fetch_social_sentiment_reddit(self, symbol: str) -> float | None:
+        return RedditSentimentFetcher(self.settings).fetch(symbol=symbol)
+
     def _fetch_social_sentiment_news(self, symbol: str) -> float | None:
-        """News proxy score in [-1,1] using API -> CryptoPanic -> local fallbacks."""
+        """News proxy score in [-1,1] using API -> GNews -> CryptoPanic -> RSS -> local fallbacks."""
         try:
             score = self._fetch_social_sentiment_endpoint(symbol)
             if score is not None:
@@ -388,7 +462,19 @@ class QuantSignalFetcher:
         except Exception:
             pass
         try:
+            score = self._fetch_social_sentiment_gnews(symbol)
+            if score is not None:
+                return score
+        except Exception:
+            pass
+        try:
             score = self._fetch_social_sentiment_cryptopanic(symbol)
+            if score is not None:
+                return score
+        except Exception:
+            pass
+        try:
+            score = self._fetch_social_sentiment_rss(symbol)
             if score is not None:
                 return score
         except Exception:

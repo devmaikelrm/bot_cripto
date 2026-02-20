@@ -42,6 +42,7 @@ def test_social_sentiment_auto_falls_back_to_local(monkeypatch, tmp_path) -> Non
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_x", lambda symbol: None)
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_telegram", lambda symbol: None)
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_cryptopanic", lambda symbol: None)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_rss", lambda symbol: None)
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_local", lambda symbol: 0.25)
 
     score = fetcher.fetch_social_sentiment("SOL/USDT")
@@ -77,6 +78,45 @@ def test_social_sentiment_source_nlp_is_used(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(fetcher, "_fetch_social_sentiment_nlp", lambda symbol: -0.2)
     score = fetcher.fetch_social_sentiment("BTC/USDT")
     assert score == 0.4
+
+
+def test_social_sentiment_source_rss_is_used(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="rss",
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_rss", lambda symbol: 0.4)
+    score = fetcher.fetch_social_sentiment("BTC/USDT")
+    assert score == 0.7
+
+
+def test_social_sentiment_source_gnews_is_used(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="gnews",
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_gnews", lambda symbol: 0.2)
+    score = fetcher.fetch_social_sentiment("BTC/USDT")
+    assert score == 0.6
+
+
+def test_social_sentiment_source_reddit_is_used(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="reddit",
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_reddit", lambda symbol: -0.4)
+    score = fetcher.fetch_social_sentiment("BTC/USDT")
+    assert score == 0.3
 
 
 def test_social_sentiment_blend_reweights_missing_sources(monkeypatch, tmp_path) -> None:
@@ -194,3 +234,37 @@ def test_social_sentiment_anomaly_detects_spike(monkeypatch, tmp_path) -> None:
     assert bundle["social_sentiment_raw"] > 0.95
     assert bundle["social_sentiment_anomaly"] > 0.0
     assert bundle["social_sentiment_zscore"] > 0.0
+
+
+def test_social_sentiment_news_fallback_uses_rss_before_local(monkeypatch, tmp_path) -> None:
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="auto",
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings)
+
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_endpoint", lambda symbol: None)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_cryptopanic", lambda symbol: None)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_rss", lambda symbol: 0.2)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_local", lambda symbol: -0.8)
+
+    score = fetcher._fetch_social_sentiment_news("BTC/USDT")
+    assert score == 0.2
+
+
+def test_social_sentiment_news_fallback_uses_gnews_before_cryptopanic(monkeypatch, tmp_path) -> None:
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="auto",
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings)
+
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_endpoint", lambda symbol: None)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_gnews", lambda symbol: 0.4)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_cryptopanic", lambda symbol: -0.9)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_rss", lambda symbol: -0.8)
+
+    score = fetcher._fetch_social_sentiment_news("BTC/USDT")
+    assert score == 0.4

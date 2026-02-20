@@ -14,8 +14,11 @@ from bot_cripto.core.config import get_settings
 def _load_table(db_path: Path, query: str) -> pd.DataFrame:
     if not db_path.exists():
         return pd.DataFrame()
-    with sqlite3.connect(db_path) as conn:
-        return pd.read_sql_query(query, conn)
+    try:
+        with sqlite3.connect(db_path) as conn:
+            return pd.read_sql_query(query, conn)
+    except sqlite3.DatabaseError:
+        return pd.DataFrame()
 
 
 def _timeframe_to_seconds(timeframe: str) -> int:
@@ -141,6 +144,19 @@ def run() -> None:
         st.info("No API health logs yet.")
     else:
         st.dataframe(api_df, use_container_width=True)
+
+    st.subheader("Adaptation Telemetry")
+    adaptive_df = _load_table(
+        db_path,
+        (
+            "SELECT ts, event_type, severity, payload_json "
+            "FROM adaptive_events ORDER BY id DESC LIMIT 30"
+        ),
+    )
+    if adaptive_df.empty:
+        st.info("No adaptive telemetry yet.")
+    else:
+        st.dataframe(adaptive_df, use_container_width=True)
 
 
 if __name__ == "__main__":

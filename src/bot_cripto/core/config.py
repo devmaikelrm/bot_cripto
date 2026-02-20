@@ -69,9 +69,21 @@ class Settings(BaseSettings):
     social_sentiment_source: str = "auto"
     social_sentiment_endpoint: str = ""
     cryptopanic_api_key: str = ""
+    gnews_api_key: str = ""
+    gnews_max_results: Annotated[int, Field(ge=1, le=100)] = 25
+    reddit_user_agent: str = "bot-cripto/0.1"
+    reddit_max_results: Annotated[int, Field(ge=1, le=100)] = 25
+    coingecko_api_key: str = ""
+    coinpaprika_api_key: str = ""
     social_sentiment_nlp_enabled: bool = True
     social_sentiment_nlp_model_id: str = "ProsusAI/finbert"
     social_sentiment_nlp_max_texts: Annotated[int, Field(ge=5, le=500)] = 120
+    social_sentiment_news_rss_enabled: bool = True
+    social_sentiment_news_rss_urls: str = (
+        "https://www.coindesk.com/arc/outboundfeeds/rss/,"
+        "https://cointelegraph.com/rss"
+    )
+    social_sentiment_news_rss_max_items: Annotated[int, Field(ge=5, le=500)] = 80
     social_sentiment_weight_x: Annotated[float, Field(ge=0.0, le=1.0)] = 0.5
     social_sentiment_weight_news: Annotated[float, Field(ge=0.0, le=1.0)] = 0.3
     social_sentiment_weight_telegram: Annotated[float, Field(ge=0.0, le=1.0)] = 0.2
@@ -86,10 +98,28 @@ class Settings(BaseSettings):
     x_max_results: Annotated[int, Field(ge=10, le=100)] = 50
     telegram_sentiment_chat_ids: str = ""
     telegram_sentiment_lookback_limit: Annotated[int, Field(ge=10, le=500)] = 100
+    meta_model_enabled: bool = True
+    meta_model_min_prob_success: Annotated[float, Field(ge=0.0, le=1.0)] = 0.55
+    meta_model_holdout_ratio: Annotated[float, Field(ge=0.05, le=0.5)] = 0.25
+    meta_model_threshold_min: Annotated[float, Field(ge=0.0, le=1.0)] = 0.50
+    meta_model_threshold_max: Annotated[float, Field(ge=0.0, le=1.0)] = 0.80
+    meta_model_threshold_step: Annotated[float, Field(gt=0.0, le=0.2)] = 0.01
+    meta_model_min_positive_predictions: Annotated[int, Field(ge=1, le=500)] = 5
     risk_per_trade: float = 0.01
     max_daily_drawdown: float = 0.03
     max_weekly_drawdown: float = 0.07
     max_position_size: float = 1.0
+    risk_cooldown_minutes: Annotated[int, Field(ge=0, le=1440)] = 15
+    risk_enable_kelly: bool = True
+    risk_kelly_fraction: Annotated[float, Field(ge=0.0, le=1.0)] = 0.2
+    risk_cvar_enabled: bool = True
+    risk_cvar_alpha: Annotated[float, Field(gt=0.0, lt=0.5)] = 0.05
+    risk_cvar_min_samples: Annotated[int, Field(ge=20, le=5000)] = 60
+    risk_cvar_limit: float = -0.03
+    risk_circuit_breaker_minutes: Annotated[int, Field(ge=0, le=10080)] = 60
+    cc_eval_window: Annotated[int, Field(ge=50, le=20000)] = 500
+    cc_promotion_margin: Annotated[float, Field(ge=0.0, le=1.0)] = 0.05
+    cc_min_trades: Annotated[int, Field(ge=1, le=5000)] = 20
     risk_score_block_threshold: Annotated[float, Field(ge=0.0, le=1.0)] = 0.9
     risk_position_size_multiplier: Annotated[float, Field(ge=0.0)] = 10.0
     model_risk_vol_ref: Annotated[float, Field(gt=0.0)] = 0.02

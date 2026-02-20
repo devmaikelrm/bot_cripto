@@ -35,6 +35,15 @@ Modular crypto market prediction system for `BTC/USDT` (`5m`, horizon `5` candle
 
 `data -> features -> models -> decision -> execution -> notifications`
 
+Layered architecture (multi-market):
+- `DATA LAYER`: `data/crypto_feeds.py`, `data/forex_feeds.py`
+- `FEATURE LAYER`: `features/layer.py`
+- `MODEL LAYER`: `models/crypto/`, `models/forex/`
+- `PORTFOLIO LAYER`: `portfolio/crypto_risk.py`, `portfolio/forex_risk.py`
+- `ALLOCATION LAYER`: `allocation/capital_allocator.py`
+- `GLOBAL REGIME LAYER`: `regime/global_regime.py`
+- `EXECUTION LAYER`: `execution/execution_router.py`
+
 - Data: provider adapters (`binance` via CCXT, `yfinance` for forex like `EUR/USD`) + parquet storage.
 - Features: RSI, MACD, ATR, rolling volatility, volume features.
 - Models: `BasePredictor`, `BaselineModel`, `TFTPredictor`.
@@ -55,6 +64,13 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 cp .env.example .env       # Windows: copy .env.example .env
+```
+
+Windows recomendado (evita Python 3.14 para compatibilidad CCXT):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_local_windows.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\bot.ps1 info
 ```
 
 ## Reproducible Clone on Another PC
@@ -80,6 +96,8 @@ bot-cripto features
 bot-cripto train-trend
 bot-cripto train-return
 bot-cripto train-risk
+bot-cripto train-meta
+bot-cripto meta-metrics-report --symbol BTC/USDT --timeframe 5m --window 10
 bot-cripto run-inference
 ```
 
@@ -90,12 +108,44 @@ pip install -e ".[stream]"
 bot-cripto stream-capture --symbol BTC/USDT --duration 120 --source cryptofeed
 ```
 
+Optional neuralforecast models (iTransformer/PatchTST):
+
+```bash
+pip install -e ".[forecast]"
+```
+
+Optional online drift detectors (ADWIN/PageHinkley):
+
+```bash
+pip install -e ".[online]"
+```
+
 Backtest and drift:
 
 ```bash
 bot-cripto backtest --folds 4
+bot-cripto backtest-purged-cv --splits 5 --purge-size 5 --embargo-size 5
+bot-cripto backtest-cpcv --groups 6 --test-groups 2 --purge-size 5 --embargo-size 5
+bot-cripto phase1-kpi-report --symbol BTC/USDT --timeframe 5m
+bot-cripto benchmark-models --models baseline,tft,nbeats,itransformer,patchtst
+bot-cripto phase2-sota-run --symbol BTC/USDT --timeframe 5m --models baseline,tft,nbeats,itransformer,patchtst --strict-complete
+bot-cripto hrp-allocate --symbols BTC/USDT,ETH/USDT,SOL/USDT --timeframe 5m --lookback 1000
+bot-cripto blend-allocate --symbols BTC/USDT,ETH/USDT,SOL/USDT --timeframe 5m --lookback 1000
+bot-cripto tune-thresholds --symbol BTC/USDT --timeframe 5m
+bot-cripto tune-thresholds --symbol BTC/USDT --timeframe 5m --apply-env
+bot-cripto rollback-thresholds-env
 bot-cripto detect-drift --history-file ./logs/performance_history.json
+bot-cripto auto-retrain --symbol BTC/USDT --timeframe 5m --dry-run
+bot-cripto champion-challenger-check --model-name trend --symbol BTC/USDT --timeframe 5m
 ```
+
+`benchmark-models` also writes an artifact in `logs/benchmark_<symbol>_<timeframe>_<timestamp>.json`
+including winner and deltas vs TFT.
+
+`phase2-sota-run` trains each requested model family, saves trained artifacts under
+`models/sota_<model>/...`, and writes a final OOS report table in:
+- `logs/phase2_sota_<symbol>_<timeframe>_<timestamp>.json`
+- `logs/phase2_sota_<symbol>_<timeframe>_<timestamp>.md`
 
 A/B sentiment backtest:
 
@@ -108,8 +158,19 @@ Sentiment checks:
 ```bash
 bot-cripto fetch-sentiment --symbol BTC/USDT --source x
 bot-cripto fetch-sentiment --symbol BTC/USDT --source telegram
+bot-cripto fetch-sentiment --symbol BTC/USDT --source gnews
+bot-cripto fetch-sentiment --symbol BTC/USDT --source reddit
+bot-cripto fetch-sentiment --symbol BTC/USDT --source rss
 bot-cripto fetch-sentiment --symbol BTC/USDT --source blend
 bot-cripto fetch-sentiment-nlp --symbol BTC/USDT
+bot-cripto api-smoke --symbol BTC/USDT --timeframe 5m
+bot-cripto architecture-status --symbols BTC/USDT,EUR/USD
+```
+
+Windows shortcut for smoke:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_api_smoke.ps1
 ```
 
 Triple-barrier labeling:
@@ -122,6 +183,14 @@ Training integration:
 
 - `train-return` now prefers `*_features_tb.parquet` and uses `tb_ret` when available.
 - `train-trend` now prefers `*_features_tb.parquet` and uses `tb_label` (baseline trend objective) when available; falls back to TFT if TB labels are missing.
+- `backtest-purged-cv` adds anti-leakage temporal CV (purge + embargo) to validate robustness beyond simple walk-forward.
+- `backtest-cpcv` adds combinatorial purged CV (CPCV-lite) with distribution metrics (`mean/p5` net return and `mean/p5` Sharpe).
+- `phase1-kpi-report` consolidates Compass Phase 1 KPIs (`wf_efficiency`, `cpcv_sharpe_mean`, `cpcv_sharpe_p5`) and writes `logs/phase1_kpi_*.json`.
+- `phase2-sota-run` enforces full Phase 2 runs (`--strict-complete`) and generates the final OOS comparison table for SOTA families.
+- `hrp-allocate` computes a Phase 4 HRP allocation MVP from aligned multi-asset returns and writes `logs/hrp_allocation_*.json`.
+- `blend-allocate` computes Phase 4 blended allocation (`HRP + Kelly proxy + Views`) and applies dynamic-correlation shrink (proxy DCC), writing `logs/blend_allocation_*.json`.
+- `train-meta` now generates enriched meta features, runs internal CPCV validation, and writes `meta_cpcv_report.json` in the model artifact.
+- `meta-metrics-report` summarizes `logs/meta_metrics_history.json` to monitor meta-model degradation/recalibration trends.
 
 Watchtower dashboard:
 
@@ -129,6 +198,8 @@ Watchtower dashboard:
 pip install -e ".[ui]"
 bot-cripto dashboard --host 0.0.0.0 --port 8501
 ```
+
+Dashboard now includes **Adaptation Telemetry** (`adaptive_events`) for retrain checks, auto-retrain actions, and champion/challenger promotion decisions.
 
 Linux smoke run:
 
@@ -158,9 +229,18 @@ Main configurable controls in `.env`:
 - `SOCIAL_SENTIMENT_SOURCE`
 - `SOCIAL_SENTIMENT_ENDPOINT`
 - `CRYPTOPANIC_API_KEY`
+- `GNEWS_API_KEY`
+- `GNEWS_MAX_RESULTS`
+- `REDDIT_USER_AGENT`
+- `REDDIT_MAX_RESULTS`
+- `COINGECKO_API_KEY`
+- `COINPAPRIKA_API_KEY`
 - `SOCIAL_SENTIMENT_NLP_ENABLED`
 - `SOCIAL_SENTIMENT_NLP_MODEL_ID`
 - `SOCIAL_SENTIMENT_NLP_MAX_TEXTS`
+- `SOCIAL_SENTIMENT_NEWS_RSS_ENABLED`
+- `SOCIAL_SENTIMENT_NEWS_RSS_URLS`
+- `SOCIAL_SENTIMENT_NEWS_RSS_MAX_ITEMS`
 - `SOCIAL_SENTIMENT_WEIGHT_X`
 - `SOCIAL_SENTIMENT_WEIGHT_NEWS`
 - `SOCIAL_SENTIMENT_WEIGHT_TELEGRAM`
@@ -170,6 +250,13 @@ Main configurable controls in `.env`:
 - `SOCIAL_SENTIMENT_RELIABILITY_WINDOW`
 - `SOCIAL_SENTIMENT_ANOMALY_WINDOW`
 - `SOCIAL_SENTIMENT_ANOMALY_Z_CLIP`
+- `META_MODEL_ENABLED`
+- `META_MODEL_MIN_PROB_SUCCESS`
+- `META_MODEL_HOLDOUT_RATIO`
+- `META_MODEL_THRESHOLD_MIN`
+- `META_MODEL_THRESHOLD_MAX`
+- `META_MODEL_THRESHOLD_STEP`
+- `META_MODEL_MIN_POSITIVE_PREDICTIONS`
 - `X_BEARER_TOKEN`
 - `X_QUERY_TEMPLATE`
 - `X_MAX_RESULTS`
@@ -179,6 +266,17 @@ Main configurable controls in `.env`:
 - `MAX_DAILY_DRAWDOWN`
 - `MAX_WEEKLY_DRAWDOWN`
 - `MAX_POSITION_SIZE`
+- `RISK_COOLDOWN_MINUTES`
+- `RISK_ENABLE_KELLY`
+- `RISK_KELLY_FRACTION`
+- `RISK_CVAR_ENABLED`
+- `RISK_CVAR_ALPHA`
+- `RISK_CVAR_MIN_SAMPLES`
+- `RISK_CVAR_LIMIT`
+- `RISK_CIRCUIT_BREAKER_MINUTES`
+- `CC_EVAL_WINDOW`
+- `CC_PROMOTION_MARGIN`
+- `CC_MIN_TRADES`
 - `RISK_SCORE_BLOCK_THRESHOLD`
 - `RISK_POSITION_SIZE_MULTIPLIER`
 - `MODEL_RISK_VOL_REF`

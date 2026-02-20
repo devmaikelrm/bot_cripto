@@ -160,6 +160,29 @@ class OKXAdapter:
         return self.client.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
 
 
+class BybitAdapter:
+    name = "bybit"
+
+    def __init__(self) -> None:
+        self.client = _build_ccxt_client(
+            "bybit",
+            {"enableRateLimit": True, "options": {"defaultType": "spot"}},
+        )
+        self.rate_limit_ms = int(self.client.rateLimit)
+
+    def parse_timeframe(self, timeframe: str) -> int:
+        return int(self.client.parse_timeframe(timeframe))
+
+    def fetch_ohlcv(
+        self,
+        symbol: str,
+        timeframe: str,
+        since: int,
+        limit: int,
+    ) -> list[list[float]]:
+        return self.client.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
+
+
 class YFinanceAdapter:
     name = "yfinance"
     rate_limit_ms = 1000
@@ -257,6 +280,7 @@ class YFinanceAdapter:
 
 _ADAPTER_REGISTRY: dict[str, type] = {
     "binance": BinanceAdapter,
+    "bybit": BybitAdapter,
     "coinbase": CoinbaseAdapter,
     "kraken": KrakenAdapter,
     "okx": OKXAdapter,
