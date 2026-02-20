@@ -10,6 +10,7 @@ import numpy as np
 
 from bot_cripto.core.config import Settings, get_settings
 from bot_cripto.core.logging import get_logger
+from bot_cripto.core.market import market_domain
 from bot_cripto.data.quant_signals import QuantSignalFetcher
 from bot_cripto.decision.engine import Action, DecisionEngine
 from bot_cripto.jobs.common import latest_model_dir, load_feature_dataset, write_signal_json
@@ -17,6 +18,7 @@ from bot_cripto.models.base import BasePredictor, PredictionOutput
 from bot_cripto.models.baseline import BaselineModel
 from bot_cripto.models.ensemble import EnsembleWeights, WeightedEnsemble
 from bot_cripto.models.meta import MetaModel
+from bot_cripto.monitoring.performance_store import PerformanceStore
 from bot_cripto.models.tft import TFTPredictor
 from bot_cripto.monitoring.watchtower_store import WatchtowerStore
 from bot_cripto.notifications.telegram import TelegramNotifier
@@ -79,17 +81,53 @@ def _to_contract_decision(action: Action, blocked: bool) -> str:
     return "NO_TRADE"
 
 
+def _default_quant_signals() -> dict[str, float]:
+    return {
+        "funding_rate": 0.0,
+        "fear_greed": 0.5,
+        "open_interest": 0.0,
+        "long_short_ratio": 1.0,
+        "orderbook_imbalance": 0.0,
+        "social_sentiment": 0.5,
+        "social_sentiment_raw": 0.5,
+        "social_sentiment_anomaly": 0.0,
+        "social_sentiment_zscore": 0.0,
+        "social_sentiment_velocity": 0.0,
+        "social_sentiment_x": 0.5,
+        "social_sentiment_news": 0.5,
+        "social_sentiment_telegram": 0.5,
+        "social_sentiment_reliability_x": 1.0,
+        "social_sentiment_reliability_news": 1.0,
+        "social_sentiment_reliability_telegram": 1.0,
+        "sp500_ret_1d": 0.0,
+        "dxy_ret_1d": 0.0,
+        "corr_btc_sp500": 0.0,
+        "corr_btc_dxy": 0.0,
+        "macro_risk_off_score": 0.5,
+    }
+
+
 def _fetch_quant_signals_safe(
     settings: Settings, target: str, df: Any
 ) -> dict[str, float]:
     """Fetch quant signals with fallback to cached/neutral values."""
     try:
         fetcher = QuantSignalFetcher(settings)
-        funding = fetcher.fetch_funding_rate(target)
+        domain = market_domain(target)
+
+        # For forex symbols, avoid crypto derivatives/orderbook endpoints.
+        if domain == "forex":
+            funding = 0.0
+            oi = 0.0
+            lsr = 1.0
+            obi = 0.0
+        else:
+            funding = fetcher.fetch_funding_rate(target)
+            oi = fetcher.fetch_open_interest(target)
+            lsr = fetcher.fetch_long_short_ratio(target)
+            obi = fetcher.fetch_orderbook_imbalance(target)
+
         fng = fetcher.fetch_fear_and_greed()
-        oi = fetcher.fetch_open_interest(target)
-        lsr = fetcher.fetch_long_short_ratio(target)
-        obi = fetcher.fetch_orderbook_imbalance(target)
         social_bundle = fetcher.fetch_social_sentiment_bundle(target)
         social = float(social_bundle["social_sentiment"])
         macro = fetcher.fetch_macro_context(df["close"])
@@ -146,29 +184,7 @@ def _fetch_quant_signals_safe(
         }
     except Exception as exc:
         logger.warning("quant_signals_fetch_failed_using_defaults", error=str(exc))
-        return {
-            "funding_rate": 0.0,
-            "fear_greed": 0.5,
-            "open_interest": 0.0,
-            "long_short_ratio": 1.0,
-            "orderbook_imbalance": 0.0,
-            "social_sentiment": 0.5,
-            "social_sentiment_raw": 0.5,
-            "social_sentiment_anomaly": 0.0,
-            "social_sentiment_zscore": 0.0,
-            "social_sentiment_velocity": 0.0,
-            "social_sentiment_x": 0.5,
-            "social_sentiment_news": 0.5,
-            "social_sentiment_telegram": 0.5,
-            "social_sentiment_reliability_x": 1.0,
-            "social_sentiment_reliability_news": 1.0,
-            "social_sentiment_reliability_telegram": 1.0,
-            "sp500_ret_1d": 0.0,
-            "dxy_ret_1d": 0.0,
-            "corr_btc_sp500": 0.0,
-            "corr_btc_dxy": 0.0,
-            "macro_risk_off_score": 0.5,
-        }
+        return _default_quant_signals()
 
 
 def _detect_volatility_mode(settings: Settings, df: Any) -> tuple[str, float]:
@@ -361,25 +377,53 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
     )
 
     # 5. Meta-model Filter
-    meta_model = MetaModel()
-    meta_path = settings.models_dir / "meta" / target.replace("/", "_")
-    if (meta_path / "meta_model.joblib").exists():
-        meta_model.load(meta_path)
-    
-    meta_blocked = meta_model.should_filter(merged.to_dict(), effective_regime, q_data)
+    meta_model = MetaModel(min_prob_success=settings.meta_model_min_prob_success)
+    meta_path: Path | None = None
+    if settings.meta_model_enabled:
+        try:
+            meta_path = latest_model_dir(settings, "meta", target, timeframe=tf)
+            if (meta_path / "meta_model.joblib").exists():
+                meta_model.load(meta_path)
+                logger.info("meta_model_loaded", path=str(meta_path))
+        except FileNotFoundError:
+            logger.info("meta_model_missing_skip_filter", symbol=target, timeframe=tf)
+    else:
+        logger.info("meta_model_disabled")
+
+    meta_prob_success = meta_model.predict_success_prob(
+        merged.to_dict(), effective_regime, q_data
+    )
+    meta_blocked = (
+        settings.meta_model_enabled
+        and meta_model.should_filter(merged.to_dict(), effective_regime, q_data)
+    )
 
     # 6. Risk & Decision
     risk_engine = RiskEngine(
         limits=RiskLimits(
             risk_per_trade=settings.risk_per_trade,
             max_daily_drawdown=settings.max_daily_drawdown,
+            max_weekly_drawdown=settings.max_weekly_drawdown,
+            max_position_size=settings.max_position_size,
+            risk_score_block_threshold=settings.risk_score_block_threshold,
             position_size_multiplier=settings.risk_position_size_multiplier,
+            cooldown_minutes=settings.risk_cooldown_minutes,
+            enable_kelly=settings.risk_enable_kelly,
+            kelly_fraction=settings.risk_kelly_fraction,
+            cvar_enabled=settings.risk_cvar_enabled,
+            cvar_alpha=settings.risk_cvar_alpha,
+            cvar_min_samples=settings.risk_cvar_min_samples,
+            cvar_limit=settings.risk_cvar_limit,
+            circuit_breaker_minutes=settings.risk_circuit_breaker_minutes,
         )
     )
     safe_symbol = target.replace("/", "_")
     risk_state_store = RiskStateStore(settings.logs_dir / f"risk_state_{safe_symbol}.json")
     state = risk_state_store.load(initial_equity=settings.initial_equity)
-    risk_decision = risk_engine.evaluate(merged, effective_regime, state)
+    perf_history = PerformanceStore(settings.logs_dir / "performance_history.json").metrics()
+    risk_decision = risk_engine.evaluate(
+        merged, effective_regime, state, recent_returns=perf_history
+    )
     risk_state_store.save(state)
 
     engine = DecisionEngine()
@@ -438,8 +482,11 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         "position_size": float(risk_decision.position_size),
         "risk_allowed": bool(risk_decision.allowed),
         "equity": float(state.equity),
+        "circuit_breaker_until": state.circuit_breaker_until,
         "quant_signals": q_data,
         "context_adjustment": context_debug,
+        "meta_prob_success": float(meta_prob_success),
+        "meta_blocked": bool(meta_blocked),
         "version": {"model_version": f"{trend_path.name},{ret_path.name}"}
     }
 

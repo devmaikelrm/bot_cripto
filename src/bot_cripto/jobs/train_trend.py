@@ -31,9 +31,22 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> str:
         if "tb_label" in df.columns:
             model = BaselineModel(objective="trend")
             logger.info("train_trend_using_triple_barrier_labels", symbol=target, timeframe=tf)
+            metadata = model.train(df, target_col="close")
         else:
-            model = TFTPredictor()  # Fallback to TFT when TB labels are unavailable.
-        metadata = model.train(df, target_col="close")
+            # Preferred path: TFT. If categorical encoding or other TFT-specific
+            # errors happen, fallback to baseline to keep the training pipeline alive.
+            try:
+                model = TFTPredictor()
+                metadata = model.train(df, target_col="close")
+            except Exception as exc:
+                logger.warning(
+                    "train_trend_tft_failed_fallback_baseline",
+                    symbol=target,
+                    timeframe=tf,
+                    error=str(exc),
+                )
+                model = BaselineModel(objective="trend")
+                metadata = model.train(df, target_col="close")
         out_dir = build_version_dir(settings, "trend", target, metadata, timeframe=tf)
         model.save(out_dir)
         write_model_metadata(out_dir, metadata)
