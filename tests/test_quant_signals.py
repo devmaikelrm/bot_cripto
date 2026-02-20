@@ -236,6 +236,26 @@ def test_social_sentiment_anomaly_detects_spike(monkeypatch, tmp_path) -> None:
     assert bundle["social_sentiment_zscore"] > 0.0
 
 
+def test_social_sentiment_bundle_includes_contrarian_and_regime(monkeypatch, tmp_path) -> None:
+    qs._cache.clear()
+    settings = Settings(
+        data_dir_raw=tmp_path / "raw",
+        social_sentiment_source="blend",
+        social_sentiment_ema_alpha=1.0,
+    )
+    settings.ensure_dirs()
+    fetcher = QuantSignalFetcher(settings, cache_ttl=0.0)
+
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_x", lambda symbol: 1.0)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_news", lambda symbol: 1.0)
+    monkeypatch.setattr(fetcher, "_fetch_social_sentiment_telegram", lambda symbol: 1.0)
+
+    bundle = fetcher.fetch_social_sentiment_bundle("BTC/USDT")
+    assert bundle["social_sentiment_regime"] == "EUPHORIA"
+    assert bundle["social_sentiment_retail"] > 0.9
+    assert bundle["social_sentiment_contrarian"] < 0.0
+
+
 def test_social_sentiment_news_fallback_uses_rss_before_local(monkeypatch, tmp_path) -> None:
     settings = Settings(
         data_dir_raw=tmp_path / "raw",

@@ -122,6 +122,57 @@ class FeaturePipeline:
                 df[col] = 0.0
             return df
 
+    @staticmethod
+    def _merge_quant_signals(df: pd.DataFrame) -> pd.DataFrame:
+        """Merge latest quant/sentiment signals parquet into feature frame."""
+        settings = get_settings()
+        symbol = settings.symbols_list[0].replace("/", "_")
+        path = settings.data_dir_raw / f"signals_{symbol}.parquet"
+        signal_cols = [
+            "orderbook_imbalance",
+            "social_sentiment",
+            "social_sentiment_raw",
+            "social_sentiment_velocity",
+            "social_sentiment_acceleration",
+            "social_sentiment_retail",
+            "social_sentiment_institutional",
+            "social_sentiment_contrarian",
+            "social_sentiment_regime",
+        ]
+        defaults = {
+            "orderbook_imbalance": 0.0,
+            "social_sentiment": 0.5,
+            "social_sentiment_raw": 0.5,
+            "social_sentiment_velocity": 0.0,
+            "social_sentiment_acceleration": 0.0,
+            "social_sentiment_retail": 0.5,
+            "social_sentiment_institutional": 0.5,
+            "social_sentiment_contrarian": 0.0,
+            "social_sentiment_regime": "APATHY",
+        }
+        if not path.exists():
+            for c, v in defaults.items():
+                df[c] = v
+            return df
+        try:
+            sig = pd.read_parquet(path).sort_index()
+            cols = [c for c in signal_cols if c in sig.columns]
+            if not cols:
+                for c, v in defaults.items():
+                    df[c] = v
+                return df
+            merged = pd.merge_asof(df, sig[cols], left_index=True, right_index=True, direction="backward")
+            for c, v in defaults.items():
+                if c not in merged.columns:
+                    merged[c] = v
+                merged[c] = merged[c].fillna(v)
+            return merged
+        except Exception as exc:
+            logger.warning("quant_signals_merge_failed", error=str(exc))
+            for c, v in defaults.items():
+                df[c] = v
+            return df
+
         try:
             snaps = pd.read_parquet(snap_path)
             snaps = snaps.sort_index()
@@ -160,6 +211,7 @@ class FeaturePipeline:
 
         # 0.5 Microstructure & Sentiment Features (from snapshot file)
         df = self._merge_micro_snapshots(df)
+        df = self._merge_quant_signals(df)
         df["obi_score"] = df["obi"].rolling(window=3).mean().fillna(0.0)
         df["whale_score"] = df["whale_pressure"].rolling(window=5).mean().fillna(0.0)
         df["sentiment_score"] = df["sentiment"].rolling(window=12).mean().fillna(0.0)
@@ -229,6 +281,12 @@ class FeaturePipeline:
 
         # 2.5 Microstructure Features (OHLCV-derived)
         df = MicrostructureFeatures.compute_all(df, window=20)
+
+        # Regime category for model context.
+        if "social_sentiment_regime" in df.columns:
+            df["sentiment_regime"] = df["social_sentiment_regime"].astype(str)
+        else:
+            df["sentiment_regime"] = "APATHY"
 
         # 3. Time Features
         # Seno/Coseno de hora y dia para ciclicidad

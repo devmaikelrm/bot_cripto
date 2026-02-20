@@ -260,5 +260,19 @@ class MicrostructureFeatures:
 
         out["micro_vwap_deviation"] = cls.vwap_deviation(c, h, l, v, window)
 
-        logger.info("microstructure_features_computed", count=12, window=window)
+        # OBI + Sentiment fusion: detect divergence between social mood and real order flow.
+        if "sentiment_score" in out.columns and "obi_score" in out.columns:
+            social_signed = (pd.to_numeric(out["sentiment_score"], errors="coerce").fillna(0.5) * 2.0) - 1.0
+            obi_signed = pd.to_numeric(out["obi_score"], errors="coerce").fillna(0.0).clip(-1.0, 1.0)
+            out["micro_sentiment_obi_divergence"] = (social_signed - obi_signed).clip(-2.0, 2.0)
+            out["micro_orderflow_override"] = np.where(
+                (social_signed > 0.6) & (obi_signed < -0.2),
+                -1.0,
+                np.where((social_signed < -0.6) & (obi_signed > 0.2), 1.0, 0.0),
+            )
+        else:
+            out["micro_sentiment_obi_divergence"] = 0.0
+            out["micro_orderflow_override"] = 0.0
+
+        logger.info("microstructure_features_computed", count=14, window=window)
         return out

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import argparse
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
@@ -81,6 +82,41 @@ def _to_contract_decision(action: Action, blocked: bool) -> str:
     return "NO_TRADE"
 
 
+def _dynamic_kelly_fraction(settings: Settings, trend_model_path: Path) -> float:
+    """Scale Kelly fraction from recent val_loss into configured [min, max] band."""
+    base = float(settings.risk_kelly_fraction)
+    if not settings.risk_kelly_dynamic_enabled:
+        return base
+    min_k = float(settings.risk_kelly_fraction_min)
+    max_k = float(settings.risk_kelly_fraction_max)
+    if max_k < min_k:
+        min_k, max_k = max_k, min_k
+    val_loss: float | None = None
+    meta_path = trend_model_path / "metadata.json"
+    if meta_path.exists():
+        try:
+            payload = json.loads(meta_path.read_text(encoding="utf-8"))
+            val_raw = payload.get("metrics", {}).get("val_loss")
+            if val_raw is not None:
+                val_loss = float(val_raw)
+        except Exception:
+            val_loss = None
+    if val_loss is None:
+        return float(min(max(base, min_k), max_k))
+
+    good = float(settings.risk_kelly_val_loss_good)
+    bad = float(settings.risk_kelly_val_loss_bad)
+    if bad <= good:
+        bad = good * 10.0
+    if val_loss <= good:
+        return max_k
+    if val_loss >= bad:
+        return min_k
+    # Linear interpolation: better loss => bigger Kelly fraction.
+    ratio = (bad - val_loss) / (bad - good)
+    return float(min_k + (max_k - min_k) * ratio)
+
+
 def _default_quant_signals() -> dict[str, float]:
     return {
         "funding_rate": 0.0,
@@ -93,9 +129,14 @@ def _default_quant_signals() -> dict[str, float]:
         "social_sentiment_anomaly": 0.0,
         "social_sentiment_zscore": 0.0,
         "social_sentiment_velocity": 0.0,
+        "social_sentiment_acceleration": 0.0,
         "social_sentiment_x": 0.5,
         "social_sentiment_news": 0.5,
         "social_sentiment_telegram": 0.5,
+        "social_sentiment_retail": 0.5,
+        "social_sentiment_institutional": 0.5,
+        "social_sentiment_contrarian": 0.0,
+        "social_sentiment_regime_code": 0.0,
         "social_sentiment_reliability_x": 1.0,
         "social_sentiment_reliability_news": 1.0,
         "social_sentiment_reliability_telegram": 1.0,
@@ -129,6 +170,8 @@ def _fetch_quant_signals_safe(
 
         fng = fetcher.fetch_fear_and_greed()
         social_bundle = fetcher.fetch_social_sentiment_bundle(target)
+        regime_map = {"PANIC": -1.0, "APATHY": 0.0, "NEUTRAL": 0.25, "EUPHORIA": 1.0}
+        regime_code = float(regime_map.get(str(social_bundle.get("social_sentiment_regime", "APATHY")), 0.0))
         social = float(social_bundle["social_sentiment"])
         macro = fetcher.fetch_macro_context(df["close"])
         fetcher.save_signals(
@@ -143,9 +186,14 @@ def _fetch_quant_signals_safe(
             social_sentiment_anomaly=float(social_bundle["social_sentiment_anomaly"]),
             social_sentiment_zscore=float(social_bundle["social_sentiment_zscore"]),
             social_sentiment_velocity=float(social_bundle["social_sentiment_velocity"]),
+            social_sentiment_acceleration=float(social_bundle.get("social_sentiment_acceleration", 0.0)),
             social_sentiment_x=float(social_bundle["social_sentiment_x"]),
             social_sentiment_news=float(social_bundle["social_sentiment_news"]),
             social_sentiment_telegram=float(social_bundle["social_sentiment_telegram"]),
+            social_sentiment_retail=float(social_bundle.get("social_sentiment_retail", 0.5)),
+            social_sentiment_institutional=float(social_bundle.get("social_sentiment_institutional", 0.5)),
+            social_sentiment_contrarian=float(social_bundle.get("social_sentiment_contrarian", 0.0)),
+            social_sentiment_regime=str(social_bundle.get("social_sentiment_regime", "APATHY")),
             social_sentiment_reliability_x=float(social_bundle["social_sentiment_reliability_x"]),
             social_sentiment_reliability_news=float(social_bundle["social_sentiment_reliability_news"]),
             social_sentiment_reliability_telegram=float(
@@ -168,9 +216,14 @@ def _fetch_quant_signals_safe(
             "social_sentiment_anomaly": float(social_bundle["social_sentiment_anomaly"]),
             "social_sentiment_zscore": float(social_bundle["social_sentiment_zscore"]),
             "social_sentiment_velocity": float(social_bundle["social_sentiment_velocity"]),
+            "social_sentiment_acceleration": float(social_bundle.get("social_sentiment_acceleration", 0.0)),
             "social_sentiment_x": float(social_bundle["social_sentiment_x"]),
             "social_sentiment_news": float(social_bundle["social_sentiment_news"]),
             "social_sentiment_telegram": float(social_bundle["social_sentiment_telegram"]),
+            "social_sentiment_retail": float(social_bundle.get("social_sentiment_retail", 0.5)),
+            "social_sentiment_institutional": float(social_bundle.get("social_sentiment_institutional", 0.5)),
+            "social_sentiment_contrarian": float(social_bundle.get("social_sentiment_contrarian", 0.0)),
+            "social_sentiment_regime_code": regime_code,
             "social_sentiment_reliability_x": float(social_bundle["social_sentiment_reliability_x"]),
             "social_sentiment_reliability_news": float(social_bundle["social_sentiment_reliability_news"]),
             "social_sentiment_reliability_telegram": float(
@@ -226,6 +279,11 @@ def _apply_context_adjustments(
     """Apply lightweight context adjustment from sentiment/orderbook/macro."""
     social = _clamp(float(q_data.get("social_sentiment", 0.5)), 0.0, 1.0)
     social_anomaly = _clamp(float(q_data.get("social_sentiment_anomaly", 0.0)), 0.0, 1.0)
+    social_accel = _clamp(float(q_data.get("social_sentiment_acceleration", 0.0)), -1.0, 1.0)
+    social_contrarian = _clamp(float(q_data.get("social_sentiment_contrarian", 0.0)), -1.0, 1.0)
+    social_retail = _clamp(float(q_data.get("social_sentiment_retail", 0.5)), 0.0, 1.0)
+    social_inst = _clamp(float(q_data.get("social_sentiment_institutional", 0.5)), 0.0, 1.0)
+    social_regime = _clamp(float(q_data.get("social_sentiment_regime_code", 0.0)), -1.0, 1.0)
     orderbook = _clamp(float(q_data.get("orderbook_imbalance", 0.0)), -1.0, 1.0)
     macro_risk_off = _clamp(float(q_data.get("macro_risk_off_score", 0.5)), 0.0, 1.0)
     sp500_ret = float(q_data.get("sp500_ret_1d", 0.0))
@@ -243,12 +301,26 @@ def _apply_context_adjustments(
         corr_component += _clamp((-dxy_ret) * 20.0, -1.0, 1.0)
     corr_component = _clamp(corr_component / 2.0, -1.0, 1.0)
 
+    # If retail euphoria conflicts with bearish orderbook flow, downweight sentiment.
+    social_orderflow_div = social_component - orderbook
+    social_flow_penalty = -0.2 * abs(social_orderflow_div) if abs(social_orderflow_div) > 0.8 else 0.0
+
     context_score = _clamp(
         (0.35 * social_component)
         + (0.35 * orderbook)
         + (0.20 * macro_component)
         + (0.10 * corr_component)
         - (0.15 * social_anomaly),
+        -1.0,
+        1.0,
+    )
+    context_score = _clamp(
+        context_score
+        + (0.10 * social_accel)
+        + (0.15 * social_inst - 0.10 * social_retail)
+        + (0.15 * social_contrarian)
+        + (0.08 * social_regime)
+        + social_flow_penalty,
         -1.0,
         1.0,
     )
@@ -277,6 +349,12 @@ def _apply_context_adjustments(
         "orderbook_component": orderbook,
         "macro_component": macro_component,
         "corr_component": corr_component,
+        "social_accel_component": 0.10 * social_accel,
+        "social_contrarian_component": 0.15 * social_contrarian,
+        "social_inst_component": 0.15 * social_inst,
+        "social_retail_component": -0.10 * social_retail,
+        "social_regime_component": 0.08 * social_regime,
+        "social_orderflow_penalty": social_flow_penalty,
         "anomaly_component": -0.15 * social_anomaly,
     }
     return adjusted, debug
@@ -409,12 +487,15 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
             position_size_multiplier=settings.risk_position_size_multiplier,
             cooldown_minutes=settings.risk_cooldown_minutes,
             enable_kelly=settings.risk_enable_kelly,
-            kelly_fraction=settings.risk_kelly_fraction,
+            kelly_fraction=_dynamic_kelly_fraction(settings, trend_path),
             cvar_enabled=settings.risk_cvar_enabled,
             cvar_alpha=settings.risk_cvar_alpha,
             cvar_min_samples=settings.risk_cvar_min_samples,
             cvar_limit=settings.risk_cvar_limit,
             circuit_breaker_minutes=settings.risk_circuit_breaker_minutes,
+            long_only=settings.risk_long_only,
+            bear_trend_multiplier=settings.risk_bear_trend_multiplier,
+            high_score_size_factor=settings.risk_high_score_size_factor,
         )
     )
     safe_symbol = target.replace("/", "_")
@@ -480,6 +561,7 @@ def run(symbol: str | None = None, timeframe: str | None = None) -> dict[str, An
         "macro_event_mode": bool(macro_event_mode),
         "realised_volatility": realised_vol,
         "position_size": float(risk_decision.position_size),
+        "kelly_fraction_effective": float(risk_engine.limits.kelly_fraction),
         "risk_allowed": bool(risk_decision.allowed),
         "equity": float(state.equity),
         "circuit_breaker_until": state.circuit_breaker_until,

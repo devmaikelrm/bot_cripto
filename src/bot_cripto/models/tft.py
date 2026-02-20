@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import warnings
 from math import erf, sqrt
 from pathlib import Path
@@ -25,7 +26,7 @@ torch.load = patched_load
 from lightning import pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
-from pytorch_forecasting.data import GroupNormalizer
+from pytorch_forecasting.data import GroupNormalizer, TorchNormalizer
 from pytorch_forecasting.metrics import QuantileLoss, MultiHorizonMetric
 from sklearn.preprocessing import RobustScaler
 
@@ -115,8 +116,8 @@ class TFTPredictor(BasePredictor):
         settings = get_settings()
         self.settings = settings
         self.horizon = settings.pred_horizon_steps
-        self.encoder_length = 120
-        self.batch_size = 256
+        self.encoder_length = int(getattr(settings, "tft_encoder_length", 288))
+        self.batch_size = int(getattr(settings, "tft_batch_size", 256))
         self.max_epochs = 30 # Increased for better convergence
         self.learning_rate = 1e-3 # Slightly lower for stability with custom loss
         self.hidden_size = 128
@@ -125,14 +126,38 @@ class TFTPredictor(BasePredictor):
         self.hidden_continuous_size = 64
         self.lstm_layers = 3 # New parameter: Deeper network
         self.quantiles = [0.1, 0.5, 0.9]
-        self.num_workers = 4
+        self.num_workers = int(getattr(settings, "tft_num_workers", 4))
+
+        if torch.cuda.is_available():
+            try:
+                mem_gb = float(torch.cuda.get_device_properties(0).total_memory) / (1024**3)
+                if mem_gb < 16:
+                    self.batch_size = min(self.batch_size, 128)
+                    self.num_workers = min(self.num_workers, 4)
+                elif mem_gb < 24:
+                    self.batch_size = min(self.batch_size, 256)
+                    self.num_workers = min(self.num_workers, 6)
+            except Exception:
+                pass
+        else:
+            self.batch_size = min(self.batch_size, 64)
+            self.num_workers = min(self.num_workers, 2)
+
+        self.batch_size = int(os.getenv("TFT_BATCH_SIZE", str(self.batch_size)))
+        self.num_workers = int(os.getenv("TFT_NUM_WORKERS", str(self.num_workers)))
+        accelerator = str(getattr(settings, "tft_accelerator", "auto"))
+        if accelerator == "auto":
+            accelerator = "gpu" if torch.cuda.is_available() else "cpu"
+        precision = str(getattr(settings, "tft_precision", "16-mixed"))
+        if accelerator == "cpu" and precision != "32-true":
+            precision = "32-true"
 
         self.model: TemporalFusionTransformer | None = None
         self.dataset_params: dict[str, Any] = {}
         self.trainer_params: dict[str, Any] = {
-            "accelerator": "gpu",
+            "accelerator": accelerator,
             "devices": 1,
-            "precision": "16-mixed",
+            "precision": precision,
             "enable_progress_bar": True,
             "logger": True,
             "enable_checkpointing": True,
@@ -151,6 +176,11 @@ class TFTPredictor(BasePredictor):
         data["group_id"] = "0"
         if "day_of_week" in data.columns:
             data["day_of_week"] = data["day_of_week"].astype(str).astype("category")
+        if "sentiment_regime" in data.columns:
+            data["sentiment_regime"] = data["sentiment_regime"].astype(str).astype("category")
+        else:
+            data["sentiment_regime"] = "APATHY"
+            data["sentiment_regime"] = data["sentiment_regime"].astype("category")
         return data
 
     def _fit_scalers(
@@ -249,18 +279,24 @@ class TFTPredictor(BasePredictor):
 
         for idx in range(start, limit + 1, step):
             window = frame.iloc[: idx + 1]
-            prepared = self._prepare_data(window, "close")
+            target_name = str(self.dataset_params.get("target", "close"))
+            prepared = self._prepare_data(window, target_name)
             prepared = self._apply_scalers(prepared)
             try:
-                p10_price, p50_price, p90_price = self._extract_quantile_prediction(prepared)
+                p10_pred, p50_pred, p90_pred = self._extract_quantile_prediction(prepared)
             except Exception as exc:
                 logger.debug("tft_calibration_sample_skip", error=str(exc))
                 continue
 
             current_price = float(window["close"].iloc[-1])
-            p10_ret = (p10_price - current_price) / current_price
-            p50_ret = (p50_price - current_price) / current_price
-            p90_ret = (p90_price - current_price) / current_price
+            if target_name == "log_ret":
+                p10_ret = float(np.expm1(p10_pred))
+                p50_ret = float(np.expm1(p50_pred))
+                p90_ret = float(np.expm1(p90_pred))
+            else:
+                p10_ret = (p10_pred - current_price) / current_price
+                p50_ret = (p50_pred - current_price) / current_price
+                p90_ret = (p90_pred - current_price) / current_price
             raw_probs.append(self._raw_probability_from_returns(p10_ret, p50_ret, p90_ret))
 
             future_price = float(frame["close"].iloc[idx + self.horizon])
@@ -300,7 +336,9 @@ class TFTPredictor(BasePredictor):
         log = logger.bind(rows=len(df))
         log.info("iniciando_entrenamiento_tft_mejorado")
 
-        data = self._prepare_data(df, target_col)
+        target_mode = str(getattr(self.settings, "tft_target_mode", "log_return")).lower()
+        train_target = "log_ret" if target_mode == "log_return" and "log_ret" in df.columns else target_col
+        data = self._prepare_data(df, train_target)
         min_length = self.encoder_length + self.horizon + 1
         if len(data) < min_length:
             raise ValueError(
@@ -340,9 +378,9 @@ class TFTPredictor(BasePredictor):
             "micro_lower_wick_ratio",
             "micro_vwap_deviation",
         }
-        unknown_reals = [c for c in df.columns if c in valid_reals and c != target_col]
-        if target_col not in unknown_reals:
-            unknown_reals.append(target_col)
+        unknown_reals = [c for c in df.columns if c in valid_reals and c != train_target]
+        if train_target not in unknown_reals:
+            unknown_reals.append(train_target)
 
         holdout_count = int(len(data) * self.settings.tft_calibration_holdout_ratio)
         calibration_start_idx = max(
@@ -358,10 +396,16 @@ class TFTPredictor(BasePredictor):
         self._fit_scalers(training_data, training_cutoff, target_col, unknown_reals)
         training_data = self._apply_scalers(training_data)
         data_scaled = self._apply_scalers(data)
+        known_cats = []
+        if "day_of_week" in data.columns:
+            known_cats.append("day_of_week")
+        if "sentiment_regime" in data.columns:
+            known_cats.append("sentiment_regime")
+
         training_dataset = TimeSeriesDataSet(
             training_data[lambda x: x.time_idx <= training_cutoff],
             time_idx="time_idx",
-            target=target_col,
+            target=train_target,
             group_ids=["group_id"],
             min_encoder_length=self.encoder_length // 2,
             max_encoder_length=self.encoder_length,
@@ -369,13 +413,11 @@ class TFTPredictor(BasePredictor):
             max_prediction_length=self.horizon,
             static_categoricals=[],
             static_reals=[],
-            time_varying_known_categoricals=(
-                ["day_of_week"] if "day_of_week" in data.columns else []
-            ),
+            time_varying_known_categoricals=known_cats,
             time_varying_known_reals=["time_idx"],
             time_varying_unknown_categoricals=[],
             time_varying_unknown_reals=unknown_reals,
-            target_normalizer=GroupNormalizer(groups=["group_id"], transformation="softplus"),
+            target_normalizer=TorchNormalizer(method="standard"),
             add_relative_time_idx=True,
             add_target_scales=True,
             add_encoder_length=True,
@@ -426,7 +468,10 @@ class TFTPredictor(BasePredictor):
             output_size=3,  # p10, p50, p90
             loss=QuantileLoss([0.1, 0.5, 0.9]),
             log_interval=10,
-            reduce_on_plateau_patience=4,
+            reduce_on_plateau_patience=(
+                int(self.settings.tft_lr_patience) if self.settings.tft_lr_reduce_on_plateau else 1000
+            ),
+            reduce_on_plateau_reduction=float(self.settings.tft_lr_reduction),
         )
         trainer.fit(
             self.model, 
@@ -441,7 +486,7 @@ class TFTPredictor(BasePredictor):
         return ModelMetadata.create(
             model_type="tft_pytorch_improved",
             version="0.2.0",
-            metrics={"val_loss": val_loss, **calibration_metrics},
+            metrics={"val_loss": val_loss, "target_mode": train_target, **calibration_metrics},
         )
 
     def predict(self, df: pd.DataFrame) -> PredictionOutput:
@@ -456,16 +501,23 @@ class TFTPredictor(BasePredictor):
             )
 
         data = self._apply_scalers(data)
-        current_price = float(df["close"].iloc[-1])
-        p10_price, p50_price, p90_price = self._extract_quantile_prediction(data)
+        p10_pred, p50_pred, p90_pred = self._extract_quantile_prediction(data)
+        target_name = str(self.dataset_params.get("target", "close"))
+        if target_name == "log_ret":
+            p10_ret = float(np.expm1(p10_pred))
+            p50_ret = float(np.expm1(p50_pred))
+            p90_ret = float(np.expm1(p90_pred))
+            expected_ret = p50_ret
+        else:
+            current_price = float(df["close"].iloc[-1])
 
-        def calc_ret(price: float) -> float:
-            return float((price - current_price) / current_price)
+            def calc_ret(price: float) -> float:
+                return float((price - current_price) / current_price)
 
-        expected_ret = calc_ret(p50_price)
-        p10_ret = calc_ret(p10_price)
-        p50_ret = expected_ret
-        p90_ret = calc_ret(p90_price)
+            expected_ret = calc_ret(p50_pred)
+            p10_ret = calc_ret(p10_pred)
+            p50_ret = expected_ret
+            p90_ret = calc_ret(p90_pred)
 
         # Sanitize: ensure p10 <= p50 <= p90 to prevent Quantile Crossing errors
         p10_ret, p50_ret, p90_ret = sorted([p10_ret, p50_ret, p90_ret])

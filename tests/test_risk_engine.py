@@ -22,6 +22,36 @@ def test_risk_engine_position_size_positive() -> None:
     assert 0.0 <= decision.position_size <= 1.0
 
 
+def test_risk_engine_blocks_bear_trend_for_long_only() -> None:
+    limits = RiskLimits(long_only=True, bear_trend_multiplier=0.0)
+    engine = RiskEngine(limits=limits)
+    pred = PredictionOutput(0.8, 0.01, -0.01, 0.01, 0.02, 0.1)
+    state = RiskState()
+
+    decision = engine.evaluate(prediction=pred, regime_str="BEAR_TREND", state=state)
+    assert decision.allowed is False
+    assert decision.position_size == 0.0
+
+
+def test_risk_engine_soft_reduces_size_on_high_risk_score() -> None:
+    limits = RiskLimits(
+        long_only=False,
+        bear_trend_multiplier=0.8,
+        risk_score_block_threshold=0.5,
+        high_score_size_factor=0.2,
+        enable_kelly=False,
+        risk_per_trade=0.02,
+        position_size_multiplier=10.0,
+    )
+    engine = RiskEngine(limits=limits)
+    pred = PredictionOutput(0.9, 0.01, -0.02, 0.01, 0.03, 0.8)
+    state = RiskState()
+    decision = engine.evaluate(prediction=pred, regime_str="BULL_TREND", state=state)
+    assert decision.allowed is True
+    assert decision.position_size > 0.0
+    assert decision.position_size < 0.05
+
+
 def test_risk_engine_blocks_on_cvar_breach_and_sets_circuit_breaker() -> None:
     limits = RiskLimits(
         cvar_enabled=True,

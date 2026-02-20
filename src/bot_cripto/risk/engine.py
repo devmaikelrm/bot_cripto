@@ -30,6 +30,9 @@ class RiskLimits:
     cvar_min_samples: int = 60
     cvar_limit: float = -0.03
     circuit_breaker_minutes: int = 60
+    long_only: bool = True
+    bear_trend_multiplier: float = 0.0
+    high_score_size_factor: float = 0.2
 
 
 @dataclass
@@ -73,7 +76,7 @@ class RiskEngine:
             return 0.0
         return max(0.0, (start - current) / start)
 
-    def _calculate_kelly_size(self, win_prob: float, win_loss_ratio: float = 1.5) -> float:
+    def _calculate_kelly_size(self, win_prob: float, win_loss_ratio: float) -> float:
         """
         Kelly Criterion formula: f* = (p*b - q) / b
         p = probability of win
@@ -88,6 +91,16 @@ class RiskEngine:
         
         kelly_f = (p * b - q) / b
         return max(0.0, kelly_f)
+
+    @staticmethod
+    def _dynamic_win_loss_ratio(prediction: PredictionOutput) -> float:
+        """Estimate payout ratio from model quantiles instead of fixed constants."""
+        upside = max(float(prediction.p90), float(prediction.expected_return), 0.0)
+        downside = abs(min(float(prediction.p10), -1e-6))
+        if downside <= 1e-6:
+            return 1.0
+        ratio = upside / downside
+        return float(min(max(ratio, 0.2), 5.0))
 
     def _compute_cvar(self, returns: list[float], alpha: float) -> float:
         """Historical CVaR (Expected Shortfall) on tail losses."""
@@ -164,7 +177,7 @@ class RiskEngine:
         # Dynamic Multipliers based on ML Regime
         regime_multipliers = {
             "BULL_TREND": 1.2,
-            "BEAR_TREND": 1.0,
+            "BEAR_TREND": self.limits.bear_trend_multiplier if self.limits.long_only else 0.8,
             "RANGE_SIDEWAYS": 0.5,
             "CRISIS_HIGH_VOL": 0.0,
             "UNKNOWN": 0.0
@@ -174,8 +187,11 @@ class RiskEngine:
         if multiplier <= 0:
             return RiskDecision(False, 0.0, f"Regime {regime_str} blocked risk")
 
-        if prediction.risk_score >= self.limits.risk_score_block_threshold:
-            return RiskDecision(False, 0.0, "Prediction risk_score too high")
+        high_risk = prediction.risk_score >= self.limits.risk_score_block_threshold
+        if high_risk:
+            multiplier *= self.limits.high_score_size_factor
+            if multiplier <= 0:
+                return RiskDecision(False, 0.0, "Prediction risk_score too high")
 
         # Dynamic sizing: use Kelly if enabled
         if self.limits.enable_kelly:
@@ -183,7 +199,8 @@ class RiskEngine:
             # If we were doing Shorts, it would be 1 - prob_up.
             # Assuming Long-only strategy for now.
             win_prob = prediction.prob_up
-            k_size = self._calculate_kelly_size(win_prob)
+            win_loss_ratio = self._dynamic_win_loss_ratio(prediction)
+            k_size = self._calculate_kelly_size(win_prob, win_loss_ratio=win_loss_ratio)
             raw = k_size * self.limits.kelly_fraction * multiplier
         else:
             conf = getattr(prediction, "confidence", max(0.0, prediction.prob_up - 0.5) * 2.0)
@@ -198,7 +215,8 @@ class RiskEngine:
 
         reason = (
             f"Risk OK: {regime_str} (mult={multiplier}), "
-            f"daily_dd={daily_dd:.2%}, size={size:.4f} (Kelly={self.limits.enable_kelly})"
+            f"daily_dd={daily_dd:.2%}, size={size:.4f} (Kelly={self.limits.enable_kelly}, "
+            f"high_risk={high_risk})"
         )
         logger.info("risk_decision", allowed=True, position_size=size, reason=reason)
         return RiskDecision(True, size, reason)

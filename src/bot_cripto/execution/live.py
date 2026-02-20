@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from time import monotonic
 from typing import Any
 
 from bot_cripto.core.config import Settings, get_settings
@@ -10,6 +11,7 @@ from bot_cripto.core.logging import get_logger
 from bot_cripto.decision.engine import Action, TradeSignal
 from bot_cripto.models.base import PredictionOutput
 from bot_cripto.ops.operator_flags import default_flags_store
+from bot_cripto.risk.engine import RiskState
 from bot_cripto.risk.state_store import RiskStateStore
 
 logger = get_logger("execution.live")
@@ -23,9 +25,18 @@ class LiveExecutor:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
         self.state_store = RiskStateStore(self.settings.logs_dir / "live_risk_state.json")
+        self._state_cache: RiskState | None = None
+        self._state_cache_ts: float = 0.0
+
+    def _state(self) -> RiskState:
+        now = monotonic()
+        if self._state_cache is None or (now - self._state_cache_ts) >= self.settings.live_state_refresh_seconds:
+            self._state_cache = self.state_store.load(initial_equity=self.settings.initial_equity)
+            self._state_cache_ts = now
+        return self._state_cache
 
     def _daily_drawdown(self) -> float:
-        state = self.state_store.load(initial_equity=self.settings.initial_equity)
+        state = self._state()
         if state.day_start_equity <= 0:
             return 0.0
         return max(0.0, (state.day_start_equity - state.equity) / state.day_start_equity)

@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     risk_cvar_min_samples: Annotated[int, Field(ge=20, le=5000)] = 60
     risk_cvar_limit: float = -0.03
     risk_circuit_breaker_minutes: Annotated[int, Field(ge=0, le=10080)] = 60
+    risk_long_only: bool = True
+    risk_bear_trend_multiplier: Annotated[float, Field(ge=0.0, le=2.0)] = 0.0
+    risk_high_score_size_factor: Annotated[float, Field(ge=0.0, le=1.0)] = 0.2
     cc_eval_window: Annotated[int, Field(ge=50, le=20000)] = 500
     cc_promotion_margin: Annotated[float, Field(ge=0.0, le=1.0)] = 0.05
     cc_min_trades: Annotated[int, Field(ge=1, le=5000)] = 20
@@ -126,9 +129,15 @@ class Settings(BaseSettings):
     model_risk_spread_ref: Annotated[float, Field(gt=0.0)] = 0.05
     initial_equity: float = 10_000.0
     spread_bps: Annotated[int, Field(ge=0)] = 2
-    slippage_bps: Annotated[int, Field(ge=0)] = 3
+    slippage_bps: Annotated[int, Field(ge=0)] = 8
     stop_loss_buffer: Annotated[float, Field(ge=0.0)] = 0.0
     take_profit_buffer: Annotated[float, Field(ge=0.0)] = 0.0
+    fill_gaps_ffill_limit: Annotated[int, Field(ge=0, le=120)] = 3
+    live_state_refresh_seconds: Annotated[int, Field(ge=1, le=60)] = 5
+    tft_batch_size: Annotated[int, Field(ge=16, le=4096)] = 256
+    tft_num_workers: Annotated[int, Field(ge=0, le=64)] = 4
+    tft_precision: str = "16-mixed"
+    tft_accelerator: str = "auto"
 
     live_confirm_token: str = ""
     live_max_daily_loss: float = 0.03
@@ -137,6 +146,16 @@ class Settings(BaseSettings):
     tft_calibration_max_samples: Annotated[int, Field(ge=10)] = 32
     tft_calibration_holdout_ratio: Annotated[float, Field(ge=0.05, le=0.5)] = 0.2
     hard_stop_max_loss: Annotated[float, Field(ge=0.0, le=1.0)] = 0.03
+    tft_encoder_length: Annotated[int, Field(ge=32, le=2048)] = 288
+    tft_lr_reduce_on_plateau: bool = True
+    tft_lr_patience: Annotated[int, Field(ge=1, le=20)] = 3
+    tft_lr_reduction: Annotated[float, Field(gt=1.0, le=10.0)] = 2.0
+    tft_target_mode: str = "log_return"
+    risk_kelly_dynamic_enabled: bool = True
+    risk_kelly_fraction_min: Annotated[float, Field(ge=0.0, le=1.0)] = 0.1
+    risk_kelly_fraction_max: Annotated[float, Field(ge=0.0, le=1.0)] = 0.4
+    risk_kelly_val_loss_good: Annotated[float, Field(gt=0.0)] = 0.003
+    risk_kelly_val_loss_bad: Annotated[float, Field(gt=0.0)] = 0.03
 
     log_level: str = "INFO"
     log_format: LogFormat = LogFormat.JSON

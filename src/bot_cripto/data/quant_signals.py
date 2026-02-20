@@ -227,9 +227,14 @@ class QuantSignalFetcher:
                 "social_sentiment_anomaly": 0.0,
                 "social_sentiment_zscore": 0.0,
                 "social_sentiment_velocity": 0.0,
+                "social_sentiment_acceleration": 0.0,
                 "social_sentiment_x": 0.5,
                 "social_sentiment_news": 0.5,
                 "social_sentiment_telegram": 0.5,
+                "social_sentiment_retail": 0.5,
+                "social_sentiment_institutional": 0.5,
+                "social_sentiment_contrarian": 0.0,
+                "social_sentiment_regime": "APATHY",
                 "social_sentiment_reliability_x": 1.0,
                 "social_sentiment_reliability_news": 1.0,
                 "social_sentiment_reliability_telegram": 1.0,
@@ -278,9 +283,14 @@ class QuantSignalFetcher:
                         "social_sentiment_anomaly": 0.0,
                         "social_sentiment_zscore": 0.0,
                         "social_sentiment_velocity": 0.0,
+                        "social_sentiment_acceleration": 0.0,
                         "social_sentiment_x": 0.5,
                         "social_sentiment_news": 0.5,
                         "social_sentiment_telegram": 0.5,
+                        "social_sentiment_retail": 0.5,
+                        "social_sentiment_institutional": 0.5,
+                        "social_sentiment_contrarian": 0.0,
+                        "social_sentiment_regime": "APATHY",
                         "social_sentiment_reliability_x": 1.0,
                         "social_sentiment_reliability_news": 1.0,
                         "social_sentiment_reliability_telegram": 1.0,
@@ -300,9 +310,14 @@ class QuantSignalFetcher:
             "social_sentiment_anomaly": 0.0,
             "social_sentiment_zscore": 0.0,
             "social_sentiment_velocity": 0.0,
+            "social_sentiment_acceleration": 0.0,
             "social_sentiment_x": 0.5,
             "social_sentiment_news": 0.5,
             "social_sentiment_telegram": 0.5,
+            "social_sentiment_retail": 0.5,
+            "social_sentiment_institutional": 0.5,
+            "social_sentiment_contrarian": 0.0,
+            "social_sentiment_regime": "APATHY",
             "social_sentiment_reliability_x": 1.0,
             "social_sentiment_reliability_news": 1.0,
             "social_sentiment_reliability_telegram": 1.0,
@@ -324,16 +339,28 @@ class QuantSignalFetcher:
 
         raw01 = _normalize_sentiment_score(weighted_raw)
         anomaly, zscore = self._compute_social_sentiment_anomaly(symbol=symbol, raw01=raw01)
-        ema01, velocity = self._smooth_social_sentiment(symbol=symbol, raw01=raw01)
+        ema01, velocity, acceleration = self._smooth_social_sentiment(symbol=symbol, raw01=raw01)
+        x01 = _normalize_sentiment_score(x_signed) if x_signed is not None else 0.5
+        news01 = _normalize_sentiment_score(news_signed) if news_signed is not None else 0.5
+        tg01 = _normalize_sentiment_score(tg_signed) if tg_signed is not None else 0.5
+        retail01 = float(np.mean([x01, tg01]))
+        institutional01 = news01
+        contrarian = self._contrarian_retail_signal(retail01)
+        regime = self._classify_sentiment_regime(ema01)
         bundle = {
             "social_sentiment": ema01,
             "social_sentiment_raw": raw01,
             "social_sentiment_anomaly": anomaly,
             "social_sentiment_zscore": zscore,
             "social_sentiment_velocity": velocity,
-            "social_sentiment_x": _normalize_sentiment_score(x_signed) if x_signed is not None else 0.5,
-            "social_sentiment_news": _normalize_sentiment_score(news_signed) if news_signed is not None else 0.5,
-            "social_sentiment_telegram": _normalize_sentiment_score(tg_signed) if tg_signed is not None else 0.5,
+            "social_sentiment_acceleration": acceleration,
+            "social_sentiment_x": x01,
+            "social_sentiment_news": news01,
+            "social_sentiment_telegram": tg01,
+            "social_sentiment_retail": retail01,
+            "social_sentiment_institutional": institutional01,
+            "social_sentiment_contrarian": contrarian,
+            "social_sentiment_regime": regime,
             "social_sentiment_reliability_x": self._source_reliability("x", symbol, x_signed),
             "social_sentiment_reliability_news": self._source_reliability("news", symbol, news_signed),
             "social_sentiment_reliability_telegram": self._source_reliability("telegram", symbol, tg_signed),
@@ -346,6 +373,11 @@ class QuantSignalFetcher:
             social_sentiment_anomaly=bundle["social_sentiment_anomaly"],
             social_sentiment_zscore=bundle["social_sentiment_zscore"],
             social_sentiment_velocity=bundle["social_sentiment_velocity"],
+            social_sentiment_acceleration=bundle["social_sentiment_acceleration"],
+            social_sentiment_retail=bundle["social_sentiment_retail"],
+            social_sentiment_institutional=bundle["social_sentiment_institutional"],
+            social_sentiment_contrarian=bundle["social_sentiment_contrarian"],
+            social_sentiment_regime=bundle["social_sentiment_regime"],
             source_x=bundle["social_sentiment_x"],
             source_news=bundle["social_sentiment_news"],
             source_telegram=bundle["social_sentiment_telegram"],
@@ -568,21 +600,56 @@ class QuantSignalFetcher:
     def _save_sentiment_state(self, symbol: str, ema01: float, raw01: float) -> None:
         path = self._sentiment_state_path(symbol)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"ema01": float(ema01), "raw01": float(raw01), "ts": pd.Timestamp.now(tz="UTC").timestamp()}
+        prev = self._load_sentiment_state(symbol)
+        payload = {
+            "ema01": float(ema01),
+            "raw01": float(raw01),
+            "velocity01": float(prev.get("velocity01", 0.0)),
+            "ts": pd.Timestamp.now(tz="UTC").timestamp(),
+        }
         path.write_text(json.dumps(payload), encoding="utf-8")
 
-    def _smooth_social_sentiment(self, symbol: str, raw01: float) -> tuple[float, float]:
+    def _smooth_social_sentiment(self, symbol: str, raw01: float) -> tuple[float, float, float]:
         state = self._load_sentiment_state(symbol)
         prev_ema = state.get("ema01")
+        prev_velocity = float(state.get("velocity01", 0.0))
         if prev_ema is None:
             ema = float(raw01)
             velocity = 0.0
+            acceleration = 0.0
         else:
             alpha = float(self.settings.social_sentiment_ema_alpha)
             ema = float(alpha * raw01 + (1.0 - alpha) * float(prev_ema))
             velocity = float(ema - float(prev_ema))
+            acceleration = float(velocity - prev_velocity)
         self._save_sentiment_state(symbol, ema01=ema, raw01=raw01)
-        return ema, velocity
+        # overwrite state with last velocity for next acceleration computation
+        path = self._sentiment_state_path(symbol)
+        state_payload = self._load_sentiment_state(symbol)
+        state_payload["velocity01"] = float(velocity)
+        path.write_text(json.dumps(state_payload), encoding="utf-8")
+        return ema, velocity, acceleration
+
+    @staticmethod
+    def _classify_sentiment_regime(score01: float) -> str:
+        if score01 >= 0.75:
+            return "EUPHORIA"
+        if score01 <= 0.25:
+            return "PANIC"
+        if 0.45 <= score01 <= 0.55:
+            return "APATHY"
+        return "NEUTRAL"
+
+    @staticmethod
+    def _contrarian_retail_signal(retail01: float) -> float:
+        """Retail contrarian signal in [-1,1]: euphoria->negative, panic->positive."""
+        if retail01 >= 0.90:
+            strength = min(1.0, (retail01 - 0.90) / 0.10)
+            return float(-strength)
+        if retail01 <= 0.10:
+            strength = min(1.0, (0.10 - retail01) / 0.10)
+            return float(strength)
+        return 0.0
 
     def _compute_social_sentiment_anomaly(self, symbol: str, raw01: float) -> tuple[float, float]:
         """Return anomaly score [0,1] + signed z-score over recent raw sentiment."""
@@ -714,9 +781,14 @@ class QuantSignalFetcher:
         social_sentiment_anomaly: float = 0.0,
         social_sentiment_zscore: float = 0.0,
         social_sentiment_velocity: float = 0.0,
+        social_sentiment_acceleration: float = 0.0,
         social_sentiment_x: float = 0.5,
         social_sentiment_news: float = 0.5,
         social_sentiment_telegram: float = 0.5,
+        social_sentiment_retail: float = 0.5,
+        social_sentiment_institutional: float = 0.5,
+        social_sentiment_contrarian: float = 0.0,
+        social_sentiment_regime: str = "APATHY",
         social_sentiment_reliability_x: float = 1.0,
         social_sentiment_reliability_news: float = 1.0,
         social_sentiment_reliability_telegram: float = 1.0,
@@ -740,9 +812,14 @@ class QuantSignalFetcher:
                 "social_sentiment_anomaly": [social_sentiment_anomaly],
                 "social_sentiment_zscore": [social_sentiment_zscore],
                 "social_sentiment_velocity": [social_sentiment_velocity],
+                "social_sentiment_acceleration": [social_sentiment_acceleration],
                 "social_sentiment_x": [social_sentiment_x],
                 "social_sentiment_news": [social_sentiment_news],
                 "social_sentiment_telegram": [social_sentiment_telegram],
+                "social_sentiment_retail": [social_sentiment_retail],
+                "social_sentiment_institutional": [social_sentiment_institutional],
+                "social_sentiment_contrarian": [social_sentiment_contrarian],
+                "social_sentiment_regime": [social_sentiment_regime],
                 "social_sentiment_reliability_x": [social_sentiment_reliability_x],
                 "social_sentiment_reliability_news": [social_sentiment_reliability_news],
                 "social_sentiment_reliability_telegram": [social_sentiment_reliability_telegram],

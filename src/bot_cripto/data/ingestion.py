@@ -217,16 +217,23 @@ class BinanceFetcher:
         if missing == 0:
             return out
 
-        out["close"] = out["close"].ffill()
-        out["open"] = out["open"].ffill()
-        out["high"] = out["high"].ffill()
-        out["low"] = out["low"].ffill()
+        ffill_limit = max(0, int(self.settings.fill_gaps_ffill_limit))
+        out["close"] = out["close"].ffill(limit=ffill_limit)
+        out["open"] = out["open"].ffill(limit=ffill_limit)
+        out["high"] = out["high"].ffill(limit=ffill_limit)
+        out["low"] = out["low"].ffill(limit=ffill_limit)
         out["volume"] = out["volume"].fillna(0.0)
 
         out = out.dropna(subset=["open", "high", "low", "close"])
         out["timestamp"] = (out.index.astype("int64") // 10**6).astype("int64")
 
-        logger.warning("gaps_filled", timeframe=timeframe, missing=missing)
+        logger.warning(
+            "gaps_filled",
+            timeframe=timeframe,
+            missing=missing,
+            ffill_limit=ffill_limit,
+            remaining_after_fill=int(out["close"].isna().sum()) if "close" in out else 0,
+        )
         return out
 
     def validate_data(self, df: pd.DataFrame, timeframe: str) -> None:

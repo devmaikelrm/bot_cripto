@@ -70,3 +70,22 @@ def test_live_executor_returns_hard_stop_price(tmp_path) -> None:
     out = executor.execute_signal(symbol="BTC/USDT", signal=signal, price=100.0, prediction=pred)
     assert out["status"] == "ready"
     assert isinstance(out["hard_stop_price"], float)
+
+
+def test_live_executor_uses_cached_state_between_calls(tmp_path) -> None:
+    settings = _live_settings(tmp_path)
+    _arm_live(settings)
+    settings.live_state_refresh_seconds = 60
+    executor = LiveExecutor(settings=settings)
+    calls = {"n": 0}
+    original_load = executor.state_store.load
+
+    def _load_with_count(initial_equity: float = 10_000.0):
+        calls["n"] += 1
+        return original_load(initial_equity=initial_equity)
+
+    executor.state_store.load = _load_with_count  # type: ignore[assignment]
+    signal = TradeSignal(action=Action.HOLD, confidence=0.0, weight=0.0, reason="noop")
+    executor.execute_signal(symbol="BTC/USDT", signal=signal, price=100.0, prediction=None)
+    executor.execute_signal(symbol="BTC/USDT", signal=signal, price=100.0, prediction=None)
+    assert calls["n"] == 1

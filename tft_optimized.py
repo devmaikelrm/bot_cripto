@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import warnings
 from math import erf, sqrt
 from pathlib import Path
@@ -25,7 +26,7 @@ torch.load = patched_load
 from lightning import pytorch as pl
 from lightning.pytorch.callbacks import EarlyStopping, TQDMProgressBar
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
-from pytorch_forecasting.data import GroupNormalizer
+from pytorch_forecasting.data import GroupNormalizer, TorchNormalizer
 from pytorch_forecasting.metrics import QuantileLoss, MultiHorizonMetric
 from sklearn.preprocessing import RobustScaler
 
@@ -70,8 +71,8 @@ class TFTPredictor(BasePredictor):
         settings = get_settings()
         self.settings = settings
         self.horizon = settings.pred_horizon_steps
-        self.encoder_length = 120
-        self.batch_size = 1024 # OPTIMIZED FOR RTX 4090
+        self.encoder_length = int(getattr(settings, "tft_encoder_length", 288))
+        self.batch_size = int(getattr(settings, "tft_batch_size", 256))
         self.max_epochs = 50 # Increased for more thorough training
         self.learning_rate = 1e-3
         self.hidden_size = 160 # OPTIMIZED: Increased capacity
@@ -80,14 +81,40 @@ class TFTPredictor(BasePredictor):
         self.hidden_continuous_size = 64
         self.lstm_layers = 4 # OPTIMIZED: Deeper network
         self.quantiles = [0.1, 0.5, 0.9]
-        self.num_workers = 12 # OPTIMIZED FOR 48 CORE POD
+        self.num_workers = int(getattr(settings, "tft_num_workers", 4))
 
+        # Dynamic hardware guardrails: tune down defaults automatically on smaller VRAM.
+        if torch.cuda.is_available():
+            try:
+                mem_gb = float(torch.cuda.get_device_properties(0).total_memory) / (1024**3)
+                if mem_gb < 16:
+                    self.batch_size = min(self.batch_size, 128)
+                    self.num_workers = min(self.num_workers, 4)
+                elif mem_gb < 24:
+                    self.batch_size = min(self.batch_size, 256)
+                    self.num_workers = min(self.num_workers, 6)
+            except Exception:
+                pass
+        else:
+            self.batch_size = min(self.batch_size, 64)
+            self.num_workers = min(self.num_workers, 2)
+
+        # Explicit env overrides have top priority for quick ops fixes.
+        self.batch_size = int(os.getenv("TFT_BATCH_SIZE", str(self.batch_size)))
+        self.num_workers = int(os.getenv("TFT_NUM_WORKERS", str(self.num_workers)))
+
+        accelerator = str(getattr(settings, "tft_accelerator", "auto"))
+        if accelerator == "auto":
+            accelerator = "gpu" if torch.cuda.is_available() else "cpu"
+        precision = str(getattr(settings, "tft_precision", "16-mixed"))
+        if accelerator == "cpu" and precision != "32-true":
+            precision = "32-true"
         self.model: TemporalFusionTransformer | None = None
         self.dataset_params: dict[str, Any] = {}
         self.trainer_params: dict[str, Any] = {
-            "accelerator": "gpu",
+            "accelerator": accelerator,
             "devices": 1,
-            "precision": "bf16-mixed",
+            "precision": precision,
             "enable_progress_bar": True,
             "logger": True,
             "enable_checkpointing": True,
@@ -256,7 +283,9 @@ class TFTPredictor(BasePredictor):
         log = logger.bind(rows=len(df))
         log.info("iniciando_entrenamiento_tft_mejorado_4090")
 
-        data = self._prepare_data(df, target_col)
+        target_mode = str(getattr(self.settings, "tft_target_mode", "log_return")).lower()
+        train_target = "log_ret" if target_mode == "log_return" and "log_ret" in df.columns else target_col
+        data = self._prepare_data(df, train_target)
         min_length = self.encoder_length + self.horizon + 1
         if len(data) < min_length:
             raise ValueError(
@@ -273,9 +302,9 @@ class TFTPredictor(BasePredictor):
             "micro_jump_score", "micro_upper_wick_ratio", "micro_lower_wick_ratio", "micro_vwap_deviation",
             "day_of_week"
         }
-        unknown_reals = [c for c in df.columns if c in valid_reals and c != target_col]
-        if target_col not in unknown_reals:
-            unknown_reals.append(target_col)
+        unknown_reals = [c for c in df.columns if c in valid_reals and c != train_target]
+        if train_target not in unknown_reals:
+            unknown_reals.append(train_target)
 
         holdout_count = int(len(data) * self.settings.tft_calibration_holdout_ratio)
         calibration_start_idx = max(
@@ -299,7 +328,7 @@ class TFTPredictor(BasePredictor):
         training_dataset = TimeSeriesDataSet(
             training_data[lambda x: x.time_idx <= training_cutoff],
             time_idx="time_idx",
-            target=target_col,
+            target=train_target,
             group_ids=["group_id"],
             min_encoder_length=self.encoder_length // 2,
             max_encoder_length=self.encoder_length,
@@ -311,7 +340,7 @@ class TFTPredictor(BasePredictor):
             time_varying_known_reals=known_reals,
             time_varying_unknown_categoricals=[],
             time_varying_unknown_reals=unknown_reals,
-            target_normalizer=GroupNormalizer(groups=["group_id"], transformation="softplus"),
+            target_normalizer=TorchNormalizer(method="standard"),
             add_relative_time_idx=True,
             add_target_scales=True,
             add_encoder_length=True,
@@ -360,7 +389,10 @@ class TFTPredictor(BasePredictor):
             output_size=3,  # p10, p50, p90
             loss=QuantileLoss([0.1, 0.5, 0.9]),
             log_interval=5,
-            reduce_on_plateau_patience=4,
+            reduce_on_plateau_patience=(
+                int(self.settings.tft_lr_patience) if self.settings.tft_lr_reduce_on_plateau else 1000
+            ),
+            reduce_on_plateau_reduction=float(self.settings.tft_lr_reduction),
         )
         
         trainer.fit(
