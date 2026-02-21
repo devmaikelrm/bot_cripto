@@ -160,16 +160,21 @@ class RiskEngine:
                     f"CVaR breach: {cvar:.2%} <= {self.limits.cvar_limit:.2%}",
                 )
 
-        # Cooldown: block trades too soon after the last one
+        # Cooldown: block trades too soon after the last one.
+        # In BULL_TREND regimes the cooldown is shortened (÷3) to avoid
+        # starvation during momentum runs while still preventing overtrading.
         if state.last_trade_ts and self.limits.cooldown_minutes > 0:
+            effective_cooldown = self.limits.cooldown_minutes
+            if regime_str == "BULL_TREND":
+                effective_cooldown = max(1, self.limits.cooldown_minutes // 3)
             try:
                 last = datetime.fromisoformat(state.last_trade_ts)
                 elapsed = (datetime.now(tz=UTC) - last).total_seconds() / 60.0
-                if elapsed < self.limits.cooldown_minutes:
-                    remaining = self.limits.cooldown_minutes - elapsed
+                if elapsed < effective_cooldown:
+                    remaining = effective_cooldown - elapsed
                     return RiskDecision(
                         False, 0.0,
-                        f"Cooldown active: {remaining:.0f}min remaining",
+                        f"Cooldown active: {remaining:.0f}min remaining ({regime_str})",
                     )
             except (ValueError, TypeError):
                 pass  # corrupt timestamp — ignore, allow trade

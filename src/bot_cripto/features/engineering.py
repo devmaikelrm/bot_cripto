@@ -23,12 +23,17 @@ class TechnicalAnalysis:
 
     @staticmethod
     def rsi(series: pd.Series, period: int = 14) -> pd.Series:
-        """Relative Strength Index (RSI)."""
-        delta = series.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        """Relative Strength Index using Wilder's SMMA (EWM alpha=1/period).
 
-        rs = gain / loss
+        Original Wilder (1978) smoothing — NOT a simple rolling mean.
+        Using SMA would overweight recent bars and under-smooth the signal.
+        """
+        delta = series.diff()
+        alpha = 1.0 / period
+        gain = delta.where(delta > 0, 0.0).ewm(alpha=alpha, adjust=False).mean()
+        loss = (-delta.where(delta < 0, 0.0)).ewm(alpha=alpha, adjust=False).mean()
+
+        rs = gain / loss.replace(0, float("nan"))
         return 100 - (100 / (1 + rs))
 
     @staticmethod
@@ -77,7 +82,7 @@ class MacroMerger:
         self.settings = get_settings()
 
     def merge(self, crypto_df: pd.DataFrame) -> pd.DataFrame:
-        """Joins macro data (daily) into crypto data (e.g. 5m) via forward fill."""
+        """Joins macro data (daily) into crypto data (e.g. 5m) with Volatility Scaling."""
         fetcher = MacroFetcher(self.settings)
         macro_df = fetcher.load_macro_all()
         
@@ -85,11 +90,31 @@ class MacroMerger:
             logger.warning("no_macro_data_found_skipping_merge")
             return crypto_df
 
+        # 0. Calculate Macro Volatility & Z-Scores (Daily context)
+        # This tells the model if a macro move is "extreme" or "normal"
+        for col in macro_df.columns:
+            if col.endswith("_close"):
+                ticker = col.replace("macro_", "").replace("_close", "")
+                
+                # Daily log returns
+                ret = np.log(macro_df[col] / macro_df[col].shift(1))
+                macro_df[f"macro_{ticker}_ret_daily"] = ret
+                
+                # Z-Score of returns (20-day window)
+                rolling_mean = ret.rolling(window=20).mean()
+                rolling_std = ret.rolling(window=20).std()
+                macro_df[f"macro_{ticker}_zscore"] = ((ret - rolling_mean) / rolling_std).fillna(0.0)
+                
+                # Annualized Volatility (assuming 252 trading days)
+                macro_df[f"macro_{ticker}_vol_ann"] = (rolling_std * np.sqrt(252)).fillna(0.0)
+
         # Ensure crypto index is sorted and TZ-aware (UTC)
         crypto_df = crypto_df.sort_index()
         
-        # Merge macro data. Since macro is daily, we join and then forward fill.
-        # We use merge_asof for efficiency or a simple join + ffill.
+        # 1. Create a "Market Open" indicator based on macro availability
+        macro_days = pd.Series(True, index=macro_df.index.normalize())
+        
+        # 2. Merge macro data using backward direction
         merged = pd.merge_asof(
             crypto_df,
             macro_df,
@@ -98,10 +123,20 @@ class MacroMerger:
             direction="backward"
         )
         
-        # Fill any initial NaNs if macro data started after crypto data
-        merged = merged.ffill().bfill()
+        # 3. Add Contextual Features for Gaps
+        crypto_days = merged.index.normalize()
+        merged["macro_market_open"] = crypto_days.isin(macro_days.index).astype(float)
         
-        logger.info("macro_data_merged", columns=list(macro_df.columns))
+        last_macro_dates = pd.Series(macro_df.index, index=macro_df.index).reindex(crypto_days, method="ffill")
+        merged["macro_data_staleness_days"] = (merged.index - last_macro_dates).dt.total_seconds() / (24 * 3600)
+        
+        # Fill any initial NaNs
+        merged = merged.ffill().fillna(0.0)
+        
+        logger.info(
+            "macro_data_merged_with_vol_scaling", 
+            columns=[c for c in merged.columns if "macro" in c]
+        )
         return merged
 
 
@@ -118,6 +153,27 @@ class FeaturePipeline:
 
         micro_cols = ["obi", "whale_pressure", "sentiment"]
         if not snap_path.exists():
+            for col in micro_cols:
+                df[col] = 0.0
+            return df
+        try:
+            snaps = pd.read_parquet(snap_path)
+            snaps = snaps.sort_index()
+            # merge_asof with direction="backward": each OHLCV bar gets the most
+            # recent snapshot whose timestamp is <= the bar's close timestamp.
+            # Assumption: snapshots are captured at bar-close time during live
+            # ingestion, so no look-ahead bias exists for live inference.
+            # For backtesting with historical snapshots this holds only if
+            # snapshot timestamps faithfully represent when the data was observed.
+            merged = pd.merge_asof(
+                df, snaps[micro_cols], left_index=True, right_index=True, direction="backward"
+            )
+            # Fill any leading NaNs (before first snapshot) with 0
+            for col in micro_cols:
+                merged[col] = merged[col].fillna(0.0)
+            return merged
+        except Exception as exc:
+            logger.warning("micro_snapshot_merge_failed", error=str(exc))
             for col in micro_cols:
                 df[col] = 0.0
             return df
@@ -171,24 +227,6 @@ class FeaturePipeline:
             logger.warning("quant_signals_merge_failed", error=str(exc))
             for c, v in defaults.items():
                 df[c] = v
-            return df
-
-        try:
-            snaps = pd.read_parquet(snap_path)
-            snaps = snaps.sort_index()
-            # merge_asof: assign each OHLCV bar the most recent snapshot
-            merged = pd.merge_asof(
-                df, snaps[micro_cols],
-                left_index=True, right_index=True, direction="backward",
-            )
-            # Fill any leading NaNs (before first snapshot) with 0
-            for col in micro_cols:
-                merged[col] = merged[col].fillna(0.0)
-            return merged
-        except Exception as exc:
-            logger.warning("micro_snapshot_merge_failed", error=str(exc))
-            for col in micro_cols:
-                df[col] = 0.0
             return df
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -279,8 +317,17 @@ class FeaturePipeline:
         vol_base_std = df["volatility_100"].rolling(window=100, min_periods=20).std()
         df["vol_z"] = ((df["volatility_100"] - vol_base_mean) / vol_base_std).fillna(0.0)
 
-        # 2.5 Microstructure Features (OHLCV-derived)
-        df = MicrostructureFeatures.compute_all(df, window=20)
+        # 2.7 Relative Macro Volatility Scaler
+        # Annualize crypto vol: std_5m * sqrt(5m_candles_per_year)
+        # 5m candles per year = 12 * 24 * 365 = 105120
+        crypto_vol_ann = df["volatility_20"] * np.sqrt(105120)
+        
+        for col in df.columns:
+            if col.startswith("macro_") and col.endswith("_vol_ann"):
+                ticker = col.replace("macro_", "").replace("_vol_ann", "")
+                # Ratio of Macro Vol / Crypto Vol
+                # If > 1, the macro asset is more volatile than BTC (rare, but happens in crises)
+                df[f"macro_rel_vol_{ticker}"] = (df[col] / crypto_vol_ann).replace([np.inf, -np.inf], 0.0).fillna(0.0)
 
         # Regime category for model context.
         if "social_sentiment_regime" in df.columns:

@@ -45,6 +45,8 @@ for sym in "${symbols[@]}"; do
     .venv/bin/bot-cripto train-trend --symbol "$sym" --timeframe "$tf"
     .venv/bin/bot-cripto train-return --symbol "$sym" --timeframe "$tf"
     .venv/bin/bot-cripto train-risk --symbol "$sym" --timeframe "$tf"
+    # Meta-model must run AFTER primary models so it can use their outputs as features
+    .venv/bin/bot-cripto train-meta --symbol "$sym" --timeframe "$tf"
   done
 done
 
