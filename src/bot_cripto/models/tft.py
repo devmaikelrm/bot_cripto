@@ -13,18 +13,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-
-# MONKEYPATCH: PyTorch 2.6+ force weights_only=False to allow complex objects in checkpoints
 import torch.serialization
-original_load = torch.load
-def patched_load(*args, **kwargs):
-    if "weights_only" in kwargs:
-        kwargs["weights_only"] = False
-    return original_load(*args, **kwargs)
-torch.load = patched_load
 
 from lightning import pytorch as pl
-from lightning.pytorch.callbacks import EarlyStopping
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 from pytorch_forecasting.data import GroupNormalizer, TorchNormalizer
 from pytorch_forecasting.metrics import QuantileLoss, MultiHorizonMetric
@@ -127,6 +119,8 @@ class TFTPredictor(BasePredictor):
         self.lstm_layers = 3 # New parameter: Deeper network
         self.quantiles = [0.1, 0.5, 0.9]
         self.num_workers = int(getattr(settings, "tft_num_workers", 4))
+        self.early_stopping_patience = int(getattr(settings, "tft_early_stopping_patience", 5))
+        self.early_stopping_min_delta = float(getattr(settings, "tft_early_stopping_min_delta", 1e-4))
 
         if torch.cuda.is_available():
             try:
@@ -145,10 +139,16 @@ class TFTPredictor(BasePredictor):
 
         self.batch_size = int(os.getenv("TFT_BATCH_SIZE", str(self.batch_size)))
         self.num_workers = int(os.getenv("TFT_NUM_WORKERS", str(self.num_workers)))
+        self.early_stopping_patience = int(
+            os.getenv("TFT_EARLY_STOPPING_PATIENCE", str(self.early_stopping_patience))
+        )
+        self.early_stopping_min_delta = float(
+            os.getenv("TFT_EARLY_STOPPING_MIN_DELTA", str(self.early_stopping_min_delta))
+        )
         accelerator = str(getattr(settings, "tft_accelerator", "auto"))
         if accelerator == "auto":
             accelerator = "gpu" if torch.cuda.is_available() else "cpu"
-        precision = str(getattr(settings, "tft_precision", "16-mixed"))
+        precision = str(getattr(settings, "tft_precision", "bf16-mixed"))
         if accelerator == "cpu" and precision != "32-true":
             precision = "32-true"
 
@@ -333,6 +333,11 @@ class TFTPredictor(BasePredictor):
         self, df: pd.DataFrame, target_col: str = "close", resume_from: str | None = None
     ) -> ModelMetadata:
         torch.set_num_threads(6)
+        if torch.cuda.is_available():
+            # Better Tensor Core utilization on modern NVIDIA GPUs (e.g., RTX 4090).
+            torch.set_float32_matmul_precision("high")
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
         log = logger.bind(rows=len(df))
         log.info("iniciando_entrenamiento_tft_mejorado")
 
@@ -443,8 +448,23 @@ class TFTPredictor(BasePredictor):
             num_workers=self.num_workers,
         )
 
+        checkpoint_callback = ModelCheckpoint(
+            monitor="val_loss",
+            mode="min",
+            save_top_k=1,
+            save_last=False,
+            filename="best-{epoch:02d}-{val_loss:.6f}",
+        )
+        early_stopping_callback = EarlyStopping(
+            monitor="val_loss",
+            mode="min",
+            patience=self.early_stopping_patience,
+            min_delta=self.early_stopping_min_delta,
+            verbose=True,
+        )
         trainer = pl.Trainer(
             max_epochs=self.max_epochs,
+            callbacks=[checkpoint_callback, early_stopping_callback],
             **self.trainer_params,
         )
         
@@ -479,8 +499,17 @@ class TFTPredictor(BasePredictor):
             val_dataloaders=val_loader,
             ckpt_path=resume_from
         )
-
-        val_loss = float(trainer.callback_metrics.get("val_loss", torch.tensor(0.0)).item())
+        best_ckpt = checkpoint_callback.best_model_path
+        if best_ckpt:
+            try:
+                self.model = TemporalFusionTransformer.load_from_checkpoint(best_ckpt)
+                log.info("tft_best_checkpoint_loaded", path=best_ckpt)
+            except Exception as exc:
+                log.warning("tft_best_checkpoint_load_failed", path=best_ckpt, error=str(exc))
+        if checkpoint_callback.best_model_score is not None:
+            val_loss = float(checkpoint_callback.best_model_score.item())
+        else:
+            val_loss = float(trainer.callback_metrics.get("val_loss", torch.tensor(0.0)).item())
         calibration_metrics = self._fit_probability_calibrator(df, start_idx=calibration_start_idx)
         log.info("entrenamiento_completado", val_loss=val_loss, **calibration_metrics)
         return ModelMetadata.create(

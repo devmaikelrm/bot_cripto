@@ -59,6 +59,44 @@ class PaperExecutor:
         self.watchtower = WatchtowerStore(self.settings.watchtower_db_path)
         self.risk_state = self.risk_state_store.load(initial_equity=self.settings.initial_equity)
         self._load_state()
+        self._sync_period_on_startup()
+
+    def _sync_period_on_startup(self) -> None:
+        """Refresh day/week start equity if the process restarted on a new period.
+
+        When the process is down overnight the stored day_id is yesterday's date.
+        _refresh_periods() in RiskEngine will correct this on the first evaluate()
+        call, but until a trade happens that update is never persisted.  We do it
+        here at startup so the correct day_start_equity is on disk immediately,
+        even if no trade occurs all day.
+        """
+        now = datetime.now(tz=UTC)
+        day_id = now.strftime("%Y-%m-%d")
+        week_id = now.strftime("%G-%V")
+        changed = False
+
+        if self.risk_state.day_id and self.risk_state.day_id != day_id:
+            self.risk_state.day_start_equity = self.risk_state.equity
+            self.risk_state.day_id = day_id
+            changed = True
+            logger.info(
+                "paper_day_period_refreshed_on_startup",
+                new_day=day_id,
+                day_start_equity=self.risk_state.day_start_equity,
+            )
+
+        if self.risk_state.week_id and self.risk_state.week_id != week_id:
+            self.risk_state.week_start_equity = self.risk_state.equity
+            self.risk_state.week_id = week_id
+            changed = True
+            logger.info(
+                "paper_week_period_refreshed_on_startup",
+                new_week=week_id,
+                week_start_equity=self.risk_state.week_start_equity,
+            )
+
+        if changed:
+            self.risk_state_store.save(self.risk_state)
 
     def _load_state(self) -> None:
         if not self.state_path.exists():
