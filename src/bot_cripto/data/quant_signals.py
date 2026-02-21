@@ -24,7 +24,10 @@ from bot_cripto.data.sentiment_x import XSentimentFetcher
 logger = get_logger("data.quant_signals")
 
 _cache: dict[str, tuple[float, float]] = {}  # key -> (value, expire_ts)
+_lkg: dict[str, float] = {}  # last-known-good values (never expire, survive API outages)
 _DEFAULT_TTL = 300.0  # 5 minutes
+_LKG_TTL = 4 * 3600.0  # last-known-good max age: 4 hours (beyond this → true default)
+_lkg_ts: dict[str, float] = {}  # timestamp when the LKG value was stored
 _REQUEST_TIMEOUT = 5  # fail fast; never block inference for too long
 
 
@@ -49,6 +52,17 @@ class QuantSignalFetcher:
 
     def _cache_set(self, key: str, value: float) -> None:
         _cache[key] = (value, time.monotonic() + self.cache_ttl)
+        # Also update last-known-good so API outages fall back to a real value
+        _lkg[key] = value
+        _lkg_ts[key] = time.monotonic()
+
+    @staticmethod
+    def _lkg_get(key: str, hard_default: float) -> float:
+        """Return last-known-good value if still within TTL, else hard_default."""
+        ts = _lkg_ts.get(key)
+        if ts is not None and (time.monotonic() - ts) < _LKG_TTL:
+            return _lkg[key]
+        return hard_default
 
     def fetch_funding_rate(self, symbol: str = "BTC/USDT") -> float:
         cache_key = f"funding:{symbol}"
@@ -67,7 +81,8 @@ class QuantSignalFetcher:
             return rate
         except Exception as exc:
             logger.warning("funding_rate_fetch_failed", symbol=symbol, error=str(exc))
-            return 0.0
+            # Return last-known-good funding rate (neutral 0.0 only if no LKG available)
+            return self._lkg_get(cache_key, hard_default=0.0)
 
     def fetch_fear_and_greed(self) -> float:
         cache_key = "fng"
@@ -85,7 +100,11 @@ class QuantSignalFetcher:
             return value
         except Exception as exc:
             logger.warning("fear_greed_fetch_failed", error=str(exc))
-            # Fallback from coingecko/coinpaprika global context.
+            # Primary fallback: last-known-good value (within 4h TTL)
+            lkg = self._lkg_get("fng", hard_default=float("nan"))
+            if not (lkg != lkg):  # not NaN
+                return lkg
+            # Secondary fallback: coingecko/coinpaprika global context
             macro = self.fetch_global_market_context()
             return float(macro.get("market_sentiment_proxy", 0.5))
 

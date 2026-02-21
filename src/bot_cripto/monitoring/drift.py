@@ -64,8 +64,10 @@ def detect_performance_drift(
         drop_drift = relative_drop >= relative_drop_threshold
 
     # KS test: are the two windows drawn from the same distribution?
+    # Only count as drift when performance is degrading (recent_mean < baseline_mean).
+    # A statistically significant *improvement* should not trigger a retrain.
     ks_stat, ks_pvalue = stats.ks_2samp(baseline, recent)
-    ks_drift = ks_pvalue < ks_alpha
+    ks_drift = (ks_pvalue < ks_alpha) and (recent_mean < baseline_mean)
 
     drift = bool(drop_drift or ks_drift)
 

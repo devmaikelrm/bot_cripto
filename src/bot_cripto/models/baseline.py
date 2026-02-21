@@ -253,10 +253,15 @@ class BaselineModel(BasePredictor):
 
         risk_score = min(max(pred_risk / self.settings.model_risk_vol_ref, 0.0), 1.0)
 
+        # BTC returns have fat tails (empirical kurtosis >> 3); using the Normal
+        # quantile multiplier 1.28 systematically underestimates the 10th/90th
+        # percentile spread.  A Student-t with df=4 gives ≈1.53σ at the 90th
+        # percentile, which is more conservative and better calibrated for crypto.
         sigma = pred_risk
-        p10 = expected_ret - 1.28 * sigma
+        _FAT_TAIL_MULT = 1.53  # t(df=4).ppf(0.90), vs 1.28 for Normal
+        p10 = expected_ret - _FAT_TAIL_MULT * sigma
         p50 = expected_ret
-        p90 = expected_ret + 1.28 * sigma
+        p90 = expected_ret + _FAT_TAIL_MULT * sigma
 
         if self.probability_calibrator is not None:
             prob_up = float(self.probability_calibrator.predict(np.array([prob_up]))[0])

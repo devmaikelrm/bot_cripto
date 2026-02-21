@@ -34,6 +34,10 @@ class ProbabilityCalibrator:
         clipped = np.clip(values, 1e-6, 1 - 1e-6)
         return cast(np.ndarray, clipped)
 
+    # Isotonic regression overfits with < 200 samples (non-parametric, too many knots).
+    # Below this threshold we fall back to Platt scaling (logistic regression).
+    _ISOTONIC_MIN_SAMPLES = 200
+
     def fit(self, raw_probs: np.ndarray, labels: np.ndarray) -> CalibrationMetrics:
         probs = self._clip(raw_probs.astype(float).ravel())
         y = labels.astype(int).ravel()
@@ -44,7 +48,13 @@ class ProbabilityCalibrator:
 
         brier_before = float(brier_score_loss(y, probs))
 
-        if self.method == "isotonic":
+        # Auto-downgrade isotonic → Platt when sample count is too small to fit
+        # a reliable monotone regression without severe overfitting.
+        effective_method = self.method
+        if self.method == "isotonic" and len(probs) < self._ISOTONIC_MIN_SAMPLES:
+            effective_method = "platt"
+
+        if effective_method == "isotonic":
             model = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
             model.fit(probs, y)
             calibrated = model.predict(probs)

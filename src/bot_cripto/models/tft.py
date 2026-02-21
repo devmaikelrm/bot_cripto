@@ -56,50 +56,6 @@ warnings.filterwarnings("ignore", ".*Attribute 'logging_metrics' is an instance 
 warnings.filterwarnings("ignore", ".*isinstance\\(treespec, LeafSpec\\) is deprecated.*")
 
 
-class SharpeAwareLoss(MultiHorizonMetric):
-    """Custom loss function optimized for Sharpe Ratio."""
-    
-    def __init__(self, alpha: float = 0.5, beta: float = 0.3, gamma: float = 0.2, **kwargs):
-        """
-        Args:
-            alpha: Weight for MAE (Mean Absolute Error)
-            beta: Weight for Directional Accuracy
-            gamma: Weight for Risk-Adjusted Returns (Volatility penalty)
-        """
-        super().__init__(**kwargs)
-        self.alpha = alpha
-        self.beta = beta
-        self.gamma = gamma
-
-    def loss(self, y_pred: torch.Tensor, y_actual: torch.Tensor) -> torch.Tensor:
-        # y_pred shape: [batch, horizon, quantiles] - we use median (index 1) for main prediction
-        # y_actual shape: [batch, horizon]
-        
-        # 1. Mean Absolute Error (Precision)
-        pred_median = y_pred[..., 1] # Assuming quantile 0.5 is at index 1
-        mae = torch.mean(torch.abs(pred_median - y_actual))
-        
-        # 2. Directional Accuracy Loss
-        # We want predicted direction to match actual direction relative to previous step
-        # Since y_actual is raw value (price/return), we need diffs.
-        # Approximation: sign(pred - mean) vs sign(actual - mean) or just raw values if standardized
-        # Better: Soft directional penalty using tanh or sigmoid
-        target_direction = torch.sign(y_actual) 
-        pred_direction = torch.tanh(pred_median * 10) # Soft sign
-        # Loss is 0 if signs match, >0 if mismatch. 
-        # (1 - product) / 2 ranges from 0 (match) to 1 (mismatch)
-        dir_loss = torch.mean(1 - (target_direction * pred_direction))
-        
-        # 3. Risk-Adjusted Penalty (Volatility)
-        # Penalize high variance in predictions when target is stable
-        # or simply punish negative returns more (Sortino-like)
-        # Here we penalize volatility of the error residuals
-        residuals = pred_median - y_actual
-        vol_penalty = torch.std(residuals)
-        
-        total_loss = (self.alpha * mae) + (self.beta * dir_loss) + (self.gamma * vol_penalty)
-        return total_loss
-
 
 class TFTPredictor(BasePredictor):
     """Predictor based on Temporal Fusion Transformer."""

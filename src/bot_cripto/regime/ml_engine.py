@@ -61,7 +61,32 @@ class MLRegimeEngine:
                 self.regime_map[c] = "BEAR_TREND"
             else:
                 self.regime_map[c] = "RANGE_SIDEWAYS"
-        
+
+        # Post-retrain sanity check: cluster assignments can shift between retrains.
+        # Verify that the BULL_TREND cluster has positive median momentum.
+        assigned_bull = [c for c, name in self.regime_map.items() if name == "BULL_TREND"]
+        if assigned_bull:
+            bull_mom = stats.loc[assigned_bull[0], "mom_100"]
+            if bull_mom <= 0:
+                logger.warning(
+                    "regime_bull_cluster_negative_momentum",
+                    cluster=assigned_bull[0],
+                    mom_100=float(bull_mom),
+                    note="K-Means relabeled BULL cluster may be unreliable after retrain",
+                )
+
+        # Warn if multiple names are missing (tie-breaking collapsed two roles into one)
+        assigned_names = set(self.regime_map.values())
+        expected_names = {"BULL_TREND", "BEAR_TREND", "CRISIS_HIGH_VOL", "RANGE_SIDEWAYS"}
+        missing = expected_names - assigned_names
+        if missing:
+            logger.warning(
+                "regime_ml_missing_labels",
+                missing=list(missing),
+                mapping=self.regime_map,
+                note="Cluster collision: two heuristics mapped to the same cluster",
+            )
+
         self.is_fitted = True
         logger.info("regime_ml_fitted", mapping=self.regime_map)
 

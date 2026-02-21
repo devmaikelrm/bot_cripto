@@ -53,6 +53,7 @@ class CPCVFoldResult:
     total_return: float
     total_net_return: float
     sharpe: float
+    is_sharpe: float = 0.0  # in-sample Sharpe (for overfitting detection)
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,8 @@ class CPCVReport:
     total_net_return_p5: float
     sharpe_mean: float
     sharpe_p5: float
+    is_sharpe_mean: float = 0.0   # mean IS Sharpe across folds
+    is_oos_ratio_mean: float = 0.0  # IS/OOS Sharpe ratio: > 3 → likely overfitting
     fold_results: list[CPCVFoldResult] = field(default_factory=list)
 
 
@@ -322,6 +325,26 @@ def run_cpcv_backtest(
 
         if total == 0:
             continue
+
+        # IS Sharpe: evaluate model on a subsample of training points.
+        # Capped at 500 to bound compute; use the most-recent train samples
+        # (highest temporal relevance).
+        _IS_MAX = 500
+        is_sample = train_idx[-_IS_MAX:] if len(train_idx) > _IS_MAX else train_idx
+        is_net_returns: list[float] = []
+        for is_idx in is_sample:
+            if is_idx + 1 >= len(df):
+                continue
+            is_pred = model.predict(df.iloc[[is_idx]])
+            c0 = float(df[target_col].iloc[is_idx])
+            c1 = float(df[target_col].iloc[is_idx + 1])
+            r = (c1 - c0) / c0 if c0 != 0 else 0.0
+            sign = 1 if is_pred.expected_return >= 0 else -1
+            is_net_returns.append(sign * r - roundtrip_cost)
+
+        fold_is_sharpe = _sharpe(is_net_returns)
+        fold_oos_sharpe = _sharpe(net_returns)
+
         fold_results.append(
             CPCVFoldResult(
                 combo_id=combo_id,
@@ -331,7 +354,8 @@ def run_cpcv_backtest(
                 accuracy=hits / total,
                 total_return=gross_ret,
                 total_net_return=net_ret,
-                sharpe=_sharpe(net_returns),
+                sharpe=fold_oos_sharpe,
+                is_sharpe=fold_is_sharpe,
             )
         )
 
@@ -347,6 +371,16 @@ def run_cpcv_backtest(
     sharpe_mean = float(np.mean(np.array(sharpe_vals, dtype=float)))
     sharpe_p5 = float(np.percentile(np.array(sharpe_vals, dtype=float), 5))
 
+    # IS Sharpe and IS/OOS ratio (overfitting diagnostic)
+    is_sharpe_vals = np.array([f.is_sharpe for f in fold_results], dtype=float)
+    is_sharpe_mean = float(np.mean(is_sharpe_vals))
+    # Ratio: IS/OOS.  Avoid division by zero; clamp OOS to ±0.01 floor.
+    ratios = []
+    for f in fold_results:
+        oos = f.sharpe if abs(f.sharpe) > 0.01 else (0.01 if f.sharpe >= 0 else -0.01)
+        ratios.append(f.is_sharpe / oos)
+    is_oos_ratio_mean = float(np.mean(ratios)) if ratios else 0.0
+
     return CPCVReport(
         n_groups=n_groups,
         n_test_groups=n_test_groups,
@@ -359,5 +393,7 @@ def run_cpcv_backtest(
         total_net_return_p5=p5,
         sharpe_mean=sharpe_mean,
         sharpe_p5=sharpe_p5,
+        is_sharpe_mean=is_sharpe_mean,
+        is_oos_ratio_mean=is_oos_ratio_mean,
         fold_results=fold_results,
     )

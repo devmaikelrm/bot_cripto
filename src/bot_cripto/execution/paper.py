@@ -237,7 +237,10 @@ class PaperExecutor:
         del self.positions[symbol]
         self._persist_equity()
         self._persist_state()
-        trade_return = pnl / self.settings.initial_equity
+        # Use current equity (not fixed initial_equity) so trade_return reflects
+        # real compounding: a 100 USD gain on 20k equity ≠ gain on 10k equity.
+        current_equity = max(self.risk_state.equity, 1.0)
+        trade_return = pnl / current_equity
         self.performance_store.append(PerformancePoint(ts=ts, metric=float(trade_return)))
         logger.info("paper_position_closed", symbol=symbol, action=action, pnl=pnl, fee=fee)
         return rec

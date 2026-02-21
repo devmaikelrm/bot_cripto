@@ -59,13 +59,13 @@ class WeightedEnsemble:
         prob_up = self._clamp01(sum(p.prob_up * wt for p, wt in norm))
         expected_return = sum(p.expected_return * wt for p, wt in norm)
 
-        # Percentiles: use conservative bounds instead of weighted average.
-        # Averaging percentiles is statistically invalid (avg of P10s != P10
-        # of combined distribution).  Conservative approach: worst-case P10,
-        # weighted-median P50, best-case P90.
-        p10 = float(min(p.p10 for p, _ in norm))
+        # Percentiles: weighted average across models.
+        # Taking min(P10) / max(P90) inflates the spread and causes risk_score
+        # and stop-loss/take-profit levels to be systematically extreme.
+        # Weighted average is a better approximation of the blended distribution.
+        p10 = sum(p.p10 * wt for p, wt in norm)
         p50 = sum(p.p50 * wt for p, wt in norm)
-        p90 = float(max(p.p90 for p, _ in norm))
+        p90 = sum(p.p90 * wt for p, wt in norm)
 
         risk_score = self._clamp01(sum(p.risk_score * wt for p, wt in norm))
 

@@ -369,7 +369,7 @@ class RealisticBacktester:
         total_gross = sum(t.gross_pnl for t in trades)
         total_net = sum(t.net_pnl for t in trades)
 
-        # Sharpe — annualised assuming ~252 trading days
+        # Sharpe — annualised assuming 365 calendar days (BTC trades 24/7)
         arr = np.array(net_returns)
         if len(arr) < 5:
             sharpe = 0.0
@@ -377,7 +377,7 @@ class RealisticBacktester:
             std = float(np.std(arr, ddof=1))
             per_trade_sharpe = float(np.mean(arr)) / std if std > 0 else 0.0
             bar_span = max(1, trades[-1].exit_idx - trades[0].entry_idx)
-            trades_per_year = 252.0 * len(trades) / bar_span
+            trades_per_year = 365.0 * len(trades) / bar_span
             sharpe = per_trade_sharpe * math.sqrt(trades_per_year)
 
         # Max drawdown — percentage of equity (not absolute dollars)
@@ -400,9 +400,8 @@ class RealisticBacktester:
         # Duration
         avg_dur = float(np.mean([t.duration_bars for t in trades]))
 
-        # Net return %
-        first_notional = trades[0].entry_price * trades[0].filled_qty
-        net_ret_pct = total_net / first_notional * 100 if first_notional > 0 else 0.0
+        # Net return % — expressed relative to starting equity, not first trade notional
+        net_ret_pct = total_net / initial_equity * 100 if initial_equity > 0 else 0.0
 
         report = RealisticBacktestReport(
             total_trades=len(trades),
